@@ -1,0 +1,498 @@
+{
+  "audioField": "Sentence Audio",
+  "customAnkiFields": {
+    "Source": ""
+  },
+  "deck": "Kaishi 1.5k",
+  "definitionField": "Word Meaning",
+  "dictionaryTracks": [
+    {
+      "dictionaryAnkiDecks": [
+        "Kaishi 1.5k",
+        "Vocab"
+      ],
+      "dictionaryAnkiMatureCutoff": 21,
+      "dictionaryAnkiSentenceFields": [],
+      "dictionaryAnkiSentenceTokenMatchStrategy": "EXACT_FORM_COLLECTED",
+      "dictionaryAnkiTreatSuspended": "NORMAL",
+      "dictionaryAnkiWordFields": [
+        "Word",
+        "Word Furigana",
+        "Word Reading",
+        "Kanji"
+      ],
+      "dictionaryAutoGenerateStatistics": true,
+      "dictionaryColorizeFullyKnownTokens": false,
+      "dictionaryColorizeOnHoverOnly": false,
+      "dictionaryColorizeSubtitles": true,
+      "dictionaryDisplayIgnoredTokenReadings": false,
+      "dictionaryHighlightOnHover": true,
+      "dictionaryMatchAcrossScripts": true,
+      "dictionaryTokenAnnotationConfig": {
+        "colorizeEnabled": true,
+        "onStates": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "onStatuses": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "subtitlePlayer": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        },
+        "video": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.3
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        }
+      },
+      "dictionaryTokenFrequencyAnnotation": "NEVER",
+      "dictionaryTokenMatchStrategy": "ANY_FORM_COLLECTED",
+      "dictionaryTokenMatchStrategyPriority": "EXACT",
+      "dictionaryTokenReadingAnnotation": "NEVER",
+      "dictionaryTokenStatusColors": [
+        "#FF0000",
+        "#FFA500",
+        "#FFFF00",
+        "#00FF00",
+        "#0000FF",
+        "#000000"
+      ],
+      "dictionaryTokenStatusConfig": [
+        {
+          "alpha": "FF",
+          "color": "#FF0000",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFA500",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFFF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#00FF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#0000FF",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#000000",
+          "display": false
+        }
+      ],
+      "dictionaryTokenStyling": "TEXT",
+      "dictionaryTokenStylingThickness": 3,
+      "dictionaryWaniKaniApiToken": "",
+      "dictionaryYomitanParser": "mecab",
+      "dictionaryYomitanScanLength": 16,
+      "dictionaryYomitanUrl": "http://127.0.0.1:19633"
+    },
+    {
+      "dictionaryAnkiDecks": [],
+      "dictionaryAnkiMatureCutoff": 21,
+      "dictionaryAnkiSentenceFields": [],
+      "dictionaryAnkiSentenceTokenMatchStrategy": "EXACT_FORM_COLLECTED",
+      "dictionaryAnkiTreatSuspended": "NORMAL",
+      "dictionaryAnkiWordFields": [],
+      "dictionaryAutoGenerateStatistics": false,
+      "dictionaryColorizeFullyKnownTokens": false,
+      "dictionaryColorizeOnHoverOnly": false,
+      "dictionaryColorizeSubtitles": false,
+      "dictionaryDisplayIgnoredTokenReadings": false,
+      "dictionaryHighlightOnHover": true,
+      "dictionaryMatchAcrossScripts": true,
+      "dictionaryTokenAnnotationConfig": {
+        "colorizeEnabled": false,
+        "onStates": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "onStatuses": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "subtitlePlayer": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        },
+        "video": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.3
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        }
+      },
+      "dictionaryTokenFrequencyAnnotation": "NEVER",
+      "dictionaryTokenMatchStrategy": "ANY_FORM_COLLECTED",
+      "dictionaryTokenMatchStrategyPriority": "EXACT",
+      "dictionaryTokenReadingAnnotation": "NEVER",
+      "dictionaryTokenStatusColors": [
+        "#FF0000",
+        "#FFA500",
+        "#FFFF00",
+        "#00FF00",
+        "#0000FF",
+        "#FFFFFF"
+      ],
+      "dictionaryTokenStatusConfig": [
+        {
+          "alpha": "FF",
+          "color": "#FF0000",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFA500",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFFF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#00FF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#0000FF",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFFFFF",
+          "display": false
+        }
+      ],
+      "dictionaryTokenStyling": "UNDERLINE",
+      "dictionaryTokenStylingThickness": 3,
+      "dictionaryWaniKaniApiToken": "",
+      "dictionaryYomitanParser": "scanning-parser",
+      "dictionaryYomitanScanLength": 16,
+      "dictionaryYomitanUrl": "http://127.0.0.1:19633"
+    },
+    {
+      "dictionaryAnkiDecks": [],
+      "dictionaryAnkiMatureCutoff": 21,
+      "dictionaryAnkiSentenceFields": [],
+      "dictionaryAnkiSentenceTokenMatchStrategy": "EXACT_FORM_COLLECTED",
+      "dictionaryAnkiTreatSuspended": "NORMAL",
+      "dictionaryAnkiWordFields": [],
+      "dictionaryAutoGenerateStatistics": false,
+      "dictionaryColorizeFullyKnownTokens": false,
+      "dictionaryColorizeOnHoverOnly": false,
+      "dictionaryColorizeSubtitles": false,
+      "dictionaryDisplayIgnoredTokenReadings": false,
+      "dictionaryHighlightOnHover": true,
+      "dictionaryMatchAcrossScripts": true,
+      "dictionaryTokenAnnotationConfig": {
+        "colorizeEnabled": false,
+        "onStates": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "onStatuses": [
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          },
+          {
+            "frequency": false,
+            "pitchAccent": false,
+            "reading": false
+          }
+        ],
+        "subtitlePlayer": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        },
+        "video": {
+          "color": {
+            "onHoverEnabled": false,
+            "size": 1
+          },
+          "frequency": {
+            "onHoverEnabled": false,
+            "size": 0.3
+          },
+          "pitchAccent": {
+            "onHoverEnabled": true,
+            "size": 0.1
+          },
+          "reading": {
+            "onHoverEnabled": false,
+            "size": 0.5
+          }
+        }
+      },
+      "dictionaryTokenFrequencyAnnotation": "NEVER",
+      "dictionaryTokenMatchStrategy": "ANY_FORM_COLLECTED",
+      "dictionaryTokenMatchStrategyPriority": "EXACT",
+      "dictionaryTokenReadingAnnotation": "NEVER",
+      "dictionaryTokenStatusColors": [
+        "#FF0000",
+        "#FFA500",
+        "#FFFF00",
+        "#00FF00",
+        "#0000FF",
+        "#FFFFFF"
+      ],
+      "dictionaryTokenStatusConfig": [
+        {
+          "alpha": "FF",
+          "color": "#FF0000",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFA500",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFFF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#00FF00",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#0000FF",
+          "display": true
+        },
+        {
+          "alpha": "FF",
+          "color": "#FFFFFF",
+          "display": false
+        }
+      ],
+      "dictionaryTokenStyling": "UNDERLINE",
+      "dictionaryTokenStylingThickness": 3,
+      "dictionaryWaniKaniApiToken": "",
+      "dictionaryYomitanParser": "scanning-parser",
+      "dictionaryYomitanScanLength": 16,
+      "dictionaryYomitanUrl": "http://127.0.0.1:19633"
+    }
+  ],
+  "imageField": "Picture",
+  "language": "en",
+  "lastPlaybackPositions": [
+    {
+      "fileName": "Terrace.House.Boys.x.Girls.Next.Door.S01E09.Week09.2012.1080p.NF.WEB-DL.AAC-IRENEBRO.mkv",
+      "position": 451208.805
+    },
+    {
+      "fileName": "Terrace.House.Boys.x.Girls.Next.Door.S01E08.Week08.2012.1080p.NF.WEB-DL.AAC-IRENEBRO.mkv",
+      "position": 1426863.038
+    },
+    {
+      "fileName": "Terrace.House.Boys.x.Girls.Next.Door.S01E07.Week07.2012.1080p.NF.WEB-DL.AAC-IRENEBRO.mkv",
+      "position": 1441812.804
+    }
+  ],
+  "lastSelectedAnkiExportMode": "updateLast",
+  "lastSubtitleOffset": 0,
+  "noteType": "Kaishi 1.5k",
+  "sentenceField": "",
+  "sourceField": "",
+  "streamingDisplaySubtitles": true,
+  "streamingLastLanguagesSynced": {
+    "megaplay.buzz": [
+      "-",
+      "-"
+    ],
+    "vidwish.live": [
+      "-",
+      "-"
+    ],
+    "www.youtube.com": [
+      "ja",
+      "-",
+      "-"
+    ]
+  },
+  "subtitleBackgroundColor": "#ffffff",
+  "subtitleBackgroundOpacity": 100,
+  "subtitleBlur": false,
+  "subtitleColor": "#000000",
+  "subtitleOutlineColor": "#ffffff",
+  "subtitleOutlineThickness": 3.1,
+  "subtitleShadowThickness": 1,
+  "subtitleSize": 34,
+  "subtitleThickness": 400,
+  "subtitleTracksV2": [],
+  "subtitlesWidth": 100,
+  "track1Field": "Sentence",
+  "track2Field": "Sentence Meaning",
+  "wordField": "Word"
+}

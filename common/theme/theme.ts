@@ -1,0 +1,26 @@
+import type { PaletteMode } from '@mui/material/styles';
+import { createTheme as createMuiTheme } from '@mui/material/styles';
+import { red } from '@mui/material/colors';
+
+export const createTheme = (themeType: PaletteMode) =>
+    createMuiTheme({
+        palette: {
+            primary: {
+                main: '#39ff14',
+                light: '#7cff5c',
+                dark: '#1f9e0c',
+                contrastText: '#041406',
+            },
+            secondary: {
+                main: '#39ff14',
+                contrastText: '#041406',
+            },
+            error: {
+                main: red.A400,
+            },
+            background: {
+                default: 'rgba(0, 0, 0, 0)',
+            },
+            mode: themeType,
+        },
+    });
