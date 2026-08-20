@@ -11,7 +11,21 @@
 
 </div>
 
-# asbplayer
+# asbplayer Priming Mode
+
+This repository is a public fork of [asbplayer](https://github.com/asbplayer/asbplayer) focused on **subtitle-line priming for language learning**.
+
+It keeps the core asbplayer experience for subtitle mining and playback, while adding a new **Priming Mode** that helps you drill one subtitle line at a time with predictable language passes.
+
+## What This Fork Adds
+
+- **Priming Mode** for line-by-line listening drills.
+- **EN / RAW / JP pass sequencing** so you can hear, hide, and replay the same subtitle line in a structured order.
+- **Next / previous line navigation** in priming mode, so moving forward skips to the next subtitle line instead of another track on the same line.
+- **Better pause / resume behavior** during priming, so resuming mid-pass stays on the same language and continues from the paused position.
+- **Mobile overlay priming controls** that match the keyboard behavior.
+
+## About asbplayer
 
 **asbplayer** is a browser-based media player and Chrome extension developed for language learners who learn their target language through subtitled media. With asbplayer, you can:
 
