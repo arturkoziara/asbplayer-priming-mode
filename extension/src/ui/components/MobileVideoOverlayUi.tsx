@@ -12,10 +12,12 @@ import type {
     PlaybackRateToVideoMessage,
     PlayMode,
     PlayModeMessage,
+    PrimingLinesPerDrillMessage,
     PrimingNextCueMessage,
     PrimingPreviousCueMessage,
     PrimingSequenceMessage,
     ToggleSubtitlesMessage,
+    CycleSubtitleTracksMessage,
 } from '@project/common';
 import ThemeProvider from '@mui/material/styles/ThemeProvider';
 import CssBaseline from '@mui/material/CssBaseline';
@@ -201,6 +203,25 @@ const MobileVideoOverlayUi = () => {
         [location]
     );
 
+    const handlePrimingLinesPerDrill = useCallback(
+        (linesPerDrill: number) => {
+            if (!location) {
+                return;
+            }
+
+            const command: MobileOverlayToVideoCommand<PrimingLinesPerDrillMessage> = {
+                sender: 'asbplayer-mobile-overlay-to-video',
+                message: {
+                    command: 'priming-lines-per-drill',
+                    linesPerDrill,
+                },
+                src: location.src,
+            };
+            void browser.runtime.sendMessage(command);
+        },
+        [location]
+    );
+
     const handlePrimingNextCue = useCallback(() => {
         if (!location) {
             return;
@@ -225,6 +246,21 @@ const MobileVideoOverlayUi = () => {
             sender: 'asbplayer-mobile-overlay-to-video',
             message: {
                 command: 'priming-previous-cue',
+            },
+            src: location.src,
+        };
+        void browser.runtime.sendMessage(command);
+    }, [location]);
+
+    const handleCycleSubtitleTracks = useCallback(() => {
+        if (!location) {
+            return;
+        }
+
+        const command: MobileOverlayToVideoCommand<CycleSubtitleTracksMessage> = {
+            sender: 'asbplayer-mobile-overlay-to-video',
+            message: {
+                command: 'cycle-subtitle-tracks',
             },
             src: location.src,
         };
@@ -319,9 +355,11 @@ const MobileVideoOverlayUi = () => {
                     onPlaybackRate={handlePlaybackRate}
                     onPlayModeSelected={handlePlayModeSelected}
                     onPrimingSequence={handlePrimingSequence}
+                    onPrimingLinesPerDrill={handlePrimingLinesPerDrill}
                     onPrimingNextCue={handlePrimingNextCue}
                     onPrimingPreviousCue={handlePrimingPreviousCue}
                     onToggleSubtitles={handleToggleSubtitles}
+                    onCycleSubtitleTracks={handleCycleSubtitleTracks}
                     onPlayModeSelectorOpened={handlePlayModeSelectorOpened}
                     onPlayModeSelectorClosed={handlePlayModeSelectorClosed}
                 />

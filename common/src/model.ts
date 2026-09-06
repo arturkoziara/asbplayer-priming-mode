@@ -317,6 +317,8 @@ export enum PlayMode {
     priming = 6,
 }
 
+export type SubtitleTrackVisibilityMode = 'all' | 'single0' | 'single1' | 'none';
+
 export interface MobileOverlayModel {
     offset: number;
     playbackRate: number;
@@ -330,10 +332,14 @@ export interface MobileOverlayModel {
     postMineAction: PostMineAction;
     subtitleDisplaying: boolean;
     subtitlesAreVisible: boolean;
+    loadedSubtitleTrackCount?: number;
+    subtitleTrackCycleEnabled?: boolean;
+    subtitleTrackVisibilityMode?: SubtitleTrackVisibilityMode;
     themeType: 'dark' | 'light';
     playModes: PlayMode[];
     primingSequence?: PrimingPassKind[];
     primingPassIndex?: number;
+    primingLinesPerDrill?: number;
     overlayInstanceId?: string;
 }
 

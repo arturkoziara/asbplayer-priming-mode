@@ -566,6 +566,19 @@ const MiscSettingTab: React.FC<Props> = ({
                         />
                         <NumericSettingInput
                             fullWidth
+                            integerOnly
+                            label={t('settings.primingLinesPerDrill')}
+                            helperText={t('settings.primingLinesPerDrillHelper')}
+                            value={primingSettings.linesPerDrill ?? 1}
+                            onValueChange={(value) =>
+                                void onSettingChanged('primingSettings', {
+                                    ...primingSettings,
+                                    linesPerDrill: Math.max(1, value),
+                                })
+                            }
+                        />
+                        <NumericSettingInput
+                            fullWidth
                             label={t('settings.primingPrerollMs')}
                             value={primingSettings.prerollMs}
                             onValueChange={(value) =>

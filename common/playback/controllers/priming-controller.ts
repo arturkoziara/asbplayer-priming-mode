@@ -33,6 +33,12 @@ export interface PrimingControllerOptions {
     readonly onPassChanged?: (passIndex: number) => void;
 }
 
+interface DrillGroup {
+    readonly cues: readonly IndexedSubtitleModel[];
+    readonly start: number;
+    readonly end: number;
+}
+
 export default class PrimingController {
     private settings: PrimingSettings;
     private readonly subtitles: () => readonly IndexedSubtitleModel[];
@@ -90,7 +96,7 @@ export default class PrimingController {
         }
 
         this.listIndex = found.listIndex;
-        this.onCueChanged?.(found.cue.index);
+        this.onCueChanged?.(found.group.cues[0].index);
         this.bindInterruptionHandlers();
         this.runPromise = this.runFromCurrentPass();
     }
@@ -124,41 +130,32 @@ export default class PrimingController {
     skipToNextCue(): void {
         if (!this.active) return;
 
-        const cues = this.drillCues();
-        const current = cues[this.listIndex];
+        const groups = this.drillGroups();
+        const current = groups[this.listIndex];
         if (current === undefined) {
             this.stop();
             return;
         }
 
-        let target = this.listIndex + 1;
-        while (target < cues.length && cuesOverlap(current, cues[target])) {
-            target += 1;
-        }
-
-        if (target >= cues.length) {
+        const target = this.nextGroupIndex(this.listIndex);
+        if (target >= groups.length) {
             this.stop();
             return;
         }
 
-        this.goToCue(target, cues);
+        this.goToGroup(target, groups);
     }
 
     skipToPreviousCue(): void {
         if (!this.active) return;
 
-        const cues = this.drillCues();
-        const current = cues[this.listIndex];
-        if (current === undefined || this.listIndex <= 0) return;
+        const groups = this.drillGroups();
+        if (this.listIndex <= 0) return;
 
-        let target = this.listIndex - 1;
-        while (target >= 0 && cuesOverlap(current, cues[target])) {
-            target -= 1;
-        }
-
+        const target = this.previousGroupIndex(this.listIndex);
         if (target < 0) return;
 
-        this.goToCue(target, cues);
+        this.goToGroup(target, groups);
     }
 
     extendCurrentGap(extraMs: number): void {
@@ -166,10 +163,23 @@ export default class PrimingController {
         this.gapExtensionMs += extraMs;
     }
 
+    /**
+     * Pause the drill loop without tearing it down — used while mining/recording so a seek
+     * to the mined cue does not restart the current multi-line group from its first line.
+     * Stays suspended until external play or navigation; mining must not auto-restart playback.
+     */
+    suspendForExternalMediaControl(): void {
+        if (!this.active) return;
+        this.suspended = true;
+        this.cancelSleep();
+        this.media.cancelPendingWait();
+    }
+
     updateSettings(settings: PrimingSettings): void {
         const sequenceChanged = JSON.stringify(this.settings.passSequence) !== JSON.stringify(settings.passSequence);
+        const linesChanged = this.settings.linesPerDrill !== settings.linesPerDrill;
         this.settings = settings;
-        if (this.active && sequenceChanged) {
+        if (this.active && (sequenceChanged || linesChanged)) {
             this.passIndex = 0;
             void this.restartRun();
         }
@@ -211,13 +221,13 @@ export default class PrimingController {
     private bindInterruptionHandlers(): void {
         this.unbinders.push(
             this.media.onExternalSeek((timestampMs) => {
-                if (!this.active || this.cancelled) return;
+                if (!this.active || this.cancelled || this.suspended) return;
                 const found = this.cueContaining(timestampMs);
                 if (found === undefined) return;
                 this.listIndex = found.listIndex;
                 this.passIndex = 0;
                 this.gapExtensionMs = 0;
-                this.onCueChanged?.(found.cue.index);
+                this.onCueChanged?.(found.group.cues[0].index);
                 void this.restartRun();
             }),
             this.media.onExternalPause(() => {
@@ -256,8 +266,8 @@ export default class PrimingController {
                 continue;
             }
 
-            const cue = this.drillCues()[this.listIndex];
-            if (cue === undefined) {
+            const group = this.drillGroups()[this.listIndex];
+            if (group === undefined) {
                 this.stop();
                 return;
             }
@@ -269,23 +279,27 @@ export default class PrimingController {
                 if (this.suspended) break;
 
                 const pass = this.timingForPass(this.passIndex, passCount);
+
+                const durationMs = this.media.durationMs();
+                const startMs = group.start;
+                const endMs =
+                    Number.isFinite(durationMs) && durationMs > 0 ? Math.min(durationMs, group.end) : group.end;
+
+                const nowMs = this.media.currentTimeMs();
+                const resumeMidPass = this.pausedMidPass && nowMs >= startMs && nowMs < endMs;
+                this.pausedMidPass = false;
+                const replayPass = this.passIndex > 0;
+
+                if (!resumeMidPass && replayPass) {
+                    await this.media.seek(startMs);
+                }
+
                 this.media.setVisibleTracks(this.visibleTracksForCurrentPass());
                 this.onPassChanged?.(this.passIndex);
                 this.media.setBlackout(pass.blackout);
                 this.media.setPlaybackRate(pass.playbackRate);
 
-                const durationMs = this.media.durationMs();
-                const startMs = Math.max(0, cue.start - this.settings.prerollMs);
-                const endMs =
-                    Number.isFinite(durationMs) && durationMs > 0
-                        ? Math.min(durationMs, cue.end + this.settings.postrollMs)
-                        : cue.end + this.settings.postrollMs;
-
-                const nowMs = this.media.currentTimeMs();
-                const resumeMidPass = this.pausedMidPass && nowMs >= startMs && nowMs < endMs;
-                this.pausedMidPass = false;
-
-                if (!resumeMidPass) {
+                if (!resumeMidPass && !replayPass) {
                     await this.media.seek(startMs);
                 }
                 if (!this.active || this.cancelled) return;
@@ -296,13 +310,14 @@ export default class PrimingController {
                 if (!this.active || this.cancelled) return;
                 if (!passCompleted || this.suspended) break;
 
+                this.media.pause();
+
                 const isLastPass = this.passIndex >= passCount - 1;
                 const gap = isLastPass
                     ? 0
                     : Math.max(0, this.settings.interPassGapMs ?? pass.gapMs) + this.gapExtensionMs;
                 this.gapExtensionMs = 0;
                 if (gap > 0) {
-                    this.media.pause();
                     await this.sleep(gap);
                     if (this.suspended) break;
                 }
@@ -329,35 +344,25 @@ export default class PrimingController {
             return false;
         }
 
-        const cues = this.drillCues();
-        const current = cues[this.listIndex];
-        if (current === undefined) {
-            this.stop();
-            return false;
-        }
-
-        let target = this.listIndex + 1;
-        while (target < cues.length && cuesOverlap(current, cues[target])) {
-            target += 1;
-        }
-
-        if (target >= cues.length) {
+        const groups = this.drillGroups();
+        const target = this.nextGroupIndex(this.listIndex);
+        if (target >= groups.length) {
             this.stop();
             return false;
         }
 
         this.listIndex = target;
         this.passIndex = 0;
-        this.onCueChanged?.(cues[this.listIndex].index);
+        this.onCueChanged?.(groups[this.listIndex].cues[0].index);
         return true;
     }
 
-    private goToCue(listIndex: number, cues: readonly IndexedSubtitleModel[]): void {
+    private goToGroup(listIndex: number, groups: readonly DrillGroup[]): void {
         this.listIndex = listIndex;
         this.passIndex = 0;
         this.gapExtensionMs = 0;
         this.suspended = false;
-        this.onCueChanged?.(cues[listIndex].index);
+        this.onCueChanged?.(groups[listIndex].cues[0].index);
         void this.restartRun();
     }
 
@@ -367,6 +372,61 @@ export default class PrimingController {
         const preferredTrack = preferredDrillTrack(this.media.trackKinds());
         const longEnough = all.filter((subtitle) => subtitle.end - subtitle.start >= this.settings.minCueDurationMs);
         return collapseOverlappingCues(longEnough, preferredTrack);
+    }
+
+    private linesPerDrill(): number {
+        return Math.max(1, Math.floor(this.settings.linesPerDrill ?? 1));
+    }
+
+    private drillGroups(): DrillGroup[] {
+        const cues = this.drillCues();
+        const linesPerDrill = this.linesPerDrill();
+        if (linesPerDrill === 1) {
+            return cues.map((cue) => ({ cues: [cue], start: cue.start, end: cue.end }));
+        }
+
+        const groups: DrillGroup[] = [];
+        for (let i = 0; i < cues.length; i += linesPerDrill) {
+            const slice = cues.slice(i, i + linesPerDrill);
+            groups.push({
+                cues: slice,
+                start: slice[0].start,
+                end: slice[slice.length - 1].end,
+            });
+        }
+        return groups;
+    }
+
+    private nextGroupIndex(currentIndex: number): number {
+        if (this.linesPerDrill() === 1) {
+            const cues = this.drillCues();
+            const current = cues[currentIndex];
+            if (current === undefined) return currentIndex + 1;
+
+            let target = currentIndex + 1;
+            while (target < cues.length && cuesOverlap(current, cues[target])) {
+                target += 1;
+            }
+            return target;
+        }
+
+        return currentIndex + 1;
+    }
+
+    private previousGroupIndex(currentIndex: number): number {
+        if (this.linesPerDrill() === 1) {
+            const cues = this.drillCues();
+            const current = cues[currentIndex];
+            if (current === undefined || currentIndex <= 0) return currentIndex - 1;
+
+            let target = currentIndex - 1;
+            while (target >= 0 && cuesOverlap(current, cues[target])) {
+                target -= 1;
+            }
+            return target;
+        }
+
+        return currentIndex - 1;
     }
 
     private visibleTracksForCurrentPass(): readonly number[] {
@@ -396,24 +456,24 @@ export default class PrimingController {
         };
     }
 
-    private cueAtPlayhead(): { listIndex: number; cue: IndexedSubtitleModel } | undefined {
+    private cueAtPlayhead(): { listIndex: number; group: DrillGroup } | undefined {
         return this.cueContaining(this.media.currentTimeMs());
     }
 
-    private cueContaining(timestampMs: number): { listIndex: number; cue: IndexedSubtitleModel } | undefined {
-        const cues = this.drillCues();
-        const containing = cues.findIndex((subtitle) => timestampMs >= subtitle.start && timestampMs <= subtitle.end);
-        if (containing >= 0) return { listIndex: containing, cue: cues[containing] };
+    private cueContaining(timestampMs: number): { listIndex: number; group: DrillGroup } | undefined {
+        const groups = this.drillGroups();
+        const containing = groups.findIndex((group) => timestampMs >= group.start && timestampMs <= group.end);
+        if (containing >= 0) return { listIndex: containing, group: groups[containing] };
 
         let bestIndex = -1;
         let bestDistance = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < cues.length; ++i) {
-            const subtitle = cues[i];
+        for (let i = 0; i < groups.length; ++i) {
+            const group = groups[i];
             const distance =
-                timestampMs < subtitle.start
-                    ? subtitle.start - timestampMs
-                    : timestampMs > subtitle.end
-                      ? timestampMs - subtitle.end
+                timestampMs < group.start
+                    ? group.start - timestampMs
+                    : timestampMs > group.end
+                      ? timestampMs - group.end
                       : 0;
             if (distance < bestDistance) {
                 bestDistance = distance;
@@ -421,7 +481,7 @@ export default class PrimingController {
             }
         }
         if (bestIndex < 0) return undefined;
-        return { listIndex: bestIndex, cue: cues[bestIndex] };
+        return { listIndex: bestIndex, group: groups[bestIndex] };
     }
 }
 

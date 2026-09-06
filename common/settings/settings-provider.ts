@@ -679,7 +679,8 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
         }
         if (
             settings.primingSettings.passSequence === undefined ||
-            settings.primingSettings.interPassGapMs === undefined
+            settings.primingSettings.interPassGapMs === undefined ||
+            settings.primingSettings.linesPerDrill === undefined
         ) {
             return {
                 ...settings,
@@ -690,6 +691,8 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
                         settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
                     interPassGapMs:
                         settings.primingSettings.interPassGapMs ?? defaultSettings.primingSettings.interPassGapMs,
+                    linesPerDrill:
+                        settings.primingSettings.linesPerDrill ?? defaultSettings.primingSettings.linesPerDrill,
                 },
             };
         }
@@ -706,6 +709,8 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
                       settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
                   interPassGapMs:
                       settings.primingSettings.interPassGapMs ?? defaultSettings.primingSettings.interPassGapMs,
+                  linesPerDrill:
+                      settings.primingSettings.linesPerDrill ?? defaultSettings.primingSettings.linesPerDrill,
               };
 
     return {

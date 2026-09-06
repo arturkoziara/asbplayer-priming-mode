@@ -1,7 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+    buildPrimingTrackKinds,
     classifySubtitleTrack,
     formatPrimingSequence,
+    nextPrimingLinesPerDrill,
     nextPrimingSequence,
     preferredDrillTrack,
     visibleTracksForPass,
@@ -16,6 +18,12 @@ describe('priming pass sequence', () => {
         expect(nextPrimingSequence(['en', 'raw', 'jp'])).toEqual(['en', 'jp']);
         expect(nextPrimingSequence(['en', 'jp'])).toEqual(['en', 'raw']);
         expect(nextPrimingSequence(['en', 'en', 'jp'])).toEqual(['en', 'raw', 'jp']);
+    });
+
+    it('cycles lines per drill from 1 through 5 and back to 1', () => {
+        expect(nextPrimingLinesPerDrill(1)).toBe(2);
+        expect(nextPrimingLinesPerDrill(4)).toBe(5);
+        expect(nextPrimingLinesPerDrill(5)).toBe(1);
     });
 
     it('classifies tracks from filenames and text', () => {
@@ -45,6 +53,18 @@ describe('priming pass sequence', () => {
         ]);
         expect(visibleTracksForPass('en', tracks)).toEqual([0]);
         expect(visibleTracksForPass('raw', tracks)).toEqual([]);
+        expect(visibleTracksForPass('jp', tracks)).toEqual([1]);
+    });
+
+    it('disambiguates two EN-classified tracks using subtitle text', () => {
+        const tracks = buildPrimingTrackKinds(
+            [
+                { track: 0, text: 'If you would like to read the script for this episode' },
+                { track: 1, text: 'このエピソードのスクリプトを読みたい場合' },
+            ],
+            ['transcript.srt', 'transcript.srt']
+        );
+        expect(visibleTracksForPass('en', tracks)).toEqual([0]);
         expect(visibleTracksForPass('jp', tracks)).toEqual([1]);
     });
 });

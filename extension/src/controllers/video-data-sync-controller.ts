@@ -595,6 +595,14 @@ export default class VideoDataSyncController {
         this._wasPaused = undefined;
     }
 
+    private _shouldFlattenSyncedTracks(data: readonly { url: unknown }[]): boolean {
+        if (data.length > 1) {
+            return false;
+        }
+
+        return data.some((track) => typeof track.url === 'object');
+    }
+
     private async _syncData(data: VideoDataSubtitleTrack[]) {
         try {
             const subtitles: SerializedSubtitleFile[] = [];
@@ -615,7 +623,7 @@ export default class VideoDataSyncController {
 
             await this._syncSubtitles(
                 subtitles,
-                data.some((track) => typeof track.url === 'object')
+                this._shouldFlattenSyncedTracks(data)
             );
             return true;
         } catch (error) {
@@ -641,7 +649,7 @@ export default class VideoDataSyncController {
 
             await this._syncSubtitles(
                 subtitles,
-                data.some((track) => typeof track.url === 'object'),
+                this._shouldFlattenSyncedTracks(data),
                 syncWithAsbplayerId
             );
             return true;

@@ -57,7 +57,7 @@ export default class PlayerChannel {
     private currentTimeCallbacks: ((currentTime: number) => void)[];
     private audioTrackSelectedCallbacks: ((id: string) => void)[];
     private closeCallbacks: (() => void)[];
-    private subtitlesCallbacks: ((subtitles: SubtitleModel[], subtitleFileName: string) => void)[];
+    private subtitlesCallbacks: ((subtitles: SubtitleModel[], subtitleFileNames: string[]) => void)[];
     private subtitlesUpdatedCallbacks: ((updatedSubtitles: IndexedSubtitleModel[]) => void)[];
     private saveTokenLocalCallbacks: ((
         track: number,
@@ -163,10 +163,7 @@ export default class PlayerChannel {
                     const subtitlesMessage = event.data as SubtitlesToVideoMessage;
 
                     for (const callback of this.subtitlesCallbacks) {
-                        callback(
-                            subtitlesMessage.value,
-                            subtitlesMessage.names.length > 0 ? subtitlesMessage.names[0] : ''
-                        );
+                        callback(subtitlesMessage.value, subtitlesMessage.names);
                     }
                     break;
                 }
@@ -326,7 +323,7 @@ export default class PlayerChannel {
         return () => this._remove(callback, this.readyCallbacks);
     }
 
-    onSubtitles(callback: (subtitles: SubtitleModel[], subtitleFileName: string) => void) {
+    onSubtitles(callback: (subtitles: SubtitleModel[], subtitleFileNames: string[]) => void) {
         this.subtitlesCallbacks.push(callback);
         return () => this._remove(callback, this.subtitlesCallbacks);
     }

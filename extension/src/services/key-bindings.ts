@@ -245,7 +245,9 @@ export default class KeyBindings {
                 event.stopImmediatePropagation();
                 context.subtitleController.disabledSubtitleTracks[track] =
                     !context.subtitleController.disabledSubtitleTracks[track];
+                context.subtitleController.refreshCurrentSubtitle = true;
                 context.subtitleController.refreshShowingSubtitles();
+                void context.mobileVideoOverlayController.updateModel();
             },
             () => context.subtitleController.subtitles.length === 0,
             true

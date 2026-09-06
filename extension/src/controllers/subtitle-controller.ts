@@ -296,6 +296,10 @@ export default class SubtitleController {
         this.refreshShowingSubtitles();
     }
 
+    get displaySubtitles() {
+        return this._displaySubtitles;
+    }
+
     set forceHideSubtitles(forceHideSubtitles: boolean) {
         this._forceHideSubtitles = forceHideSubtitles;
         this.showingSubtitles = undefined;

@@ -344,6 +344,10 @@ export interface ToggleSubtitlesMessage extends Message {
     readonly command: 'toggle-subtitles';
 }
 
+export interface CycleSubtitleTracksMessage extends Message {
+    readonly command: 'cycle-subtitle-tracks';
+}
+
 export interface ToggleSubtitlesInListFromVideoMessage extends Message {
     readonly command: 'toggleSubtitleTrackInList';
     readonly track: number;
@@ -475,6 +479,11 @@ export interface PlayModeMessage extends Message {
 export interface PrimingSequenceMessage extends Message {
     readonly command: 'priming-sequence';
     readonly sequence: PrimingPassKind[];
+}
+
+export interface PrimingLinesPerDrillMessage extends Message {
+    readonly command: 'priming-lines-per-drill';
+    readonly linesPerDrill: number;
 }
 
 export interface PrimingNextCueMessage extends Message {

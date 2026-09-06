@@ -1,11 +1,14 @@
 import { PlayMode } from '@project/common';
 import PrimingController, { type MediaAdapter } from '@project/common/playback/controllers/priming-controller';
-import { classifySubtitleTrack } from '@project/common/playback/controllers/priming-pass-sequence';
+import {
+    buildPrimingTrackKinds,
+    preferredDrillTrack,
+} from '@project/common/playback/controllers/priming-pass-sequence';
 import type { PlayModeTransition } from '@project/common/playback/controllers/playback-mode-controller';
 import type { PrimingSettings } from '@project/common/settings/settings';
 import type { IndexedSubtitleModel } from '@project/common';
 
-export interface BindingPrimingContext {
+export interface PrimingContext {
     readonly video: HTMLMediaElement;
     readonly currentTimeMs: () => number;
     readonly seek: (timestampMs: number) => Promise<void>;
@@ -15,18 +18,21 @@ export interface BindingPrimingContext {
     readonly subtitleFileNames: () => readonly string[];
     readonly setVisibleTracks: (indices: readonly number[]) => void;
     readonly clearPrimingTrackVisibility: () => void;
+    readonly resetDisabledSubtitleTracks: () => void;
     readonly getPrimingSettings: () => PrimingSettings;
     readonly onPrimingStateChanged?: () => void;
 }
 
-export default class BindingPrimingSupport {
+export default class PrimingSupport {
     private controller?: PrimingController;
     private blackoutElement?: HTMLDivElement;
     private ignoreExternalUntil = 0;
     private waitGeneration = 0;
     private desired = false;
+    /** True while audio/screenshot mining owns the media element. */
+    private recordingSuppressed = false;
 
-    constructor(private readonly context: BindingPrimingContext) {}
+    constructor(private readonly context: PrimingContext) {}
 
     handlePlaybackModesChanged(transition: PlayModeTransition): void {
         if (transition.added.has(PlayMode.priming)) {
@@ -93,7 +99,23 @@ export default class BindingPrimingSupport {
 
     /** True while the controller is performing its own seek/play (ignore redirect logic). */
     get suppressSubtitleNavigationRedirect(): boolean {
-        return this.ignoringExternal;
+        return this.ignoringExternal || this.recordingSuppressed;
+    }
+
+    /**
+     * Suspend the priming drill while mining records audio. Without this, seeking to the
+     * mined line inside a multi-line group is treated as an external seek and the drill
+     * restarts from the first line — so the recorder captures the wrong cue.
+     */
+    suspendForRecording(): void {
+        this.recordingSuppressed = true;
+        this.cancelWait();
+        this.controller?.suspendForExternalMediaControl();
+    }
+
+    resumeAfterRecording(): void {
+        this.recordingSuppressed = false;
+        // Controller stays suspended until the user plays or navigates; do not auto-seek.
     }
 
     get currentPassIndex(): number {
@@ -102,6 +124,11 @@ export default class BindingPrimingSupport {
 
     get passCount(): number {
         return this.controller?.passCount ?? this.context.getPrimingSettings().passSequence.length;
+    }
+
+    /** Prefer JP for mined sentence text while priming. */
+    preferredMiningTrack(): number | undefined {
+        return preferredDrillTrack(this.trackKinds());
     }
 
     stop(): void {
@@ -122,6 +149,7 @@ export default class BindingPrimingSupport {
     private start(): void {
         this.cancelWait();
         this.controller?.stop(false);
+        this.context.resetDisabledSubtitleTracks();
         this.controller = new PrimingController({
             settings: this.context.getPrimingSettings(),
             subtitles: this.context.subtitles,
@@ -201,7 +229,7 @@ export default class BindingPrimingSupport {
             trackKinds: () => this.trackKinds(),
             onExternalSeek: (cb) => {
                 const listener = () => {
-                    if (this.ignoringExternal) return;
+                    if (this.ignoringExternal || this.recordingSuppressed) return;
                     cb(this.context.currentTimeMs());
                 };
                 video.addEventListener('seeked', listener);
@@ -209,7 +237,7 @@ export default class BindingPrimingSupport {
             },
             onExternalPause: (cb) => {
                 const listener = () => {
-                    if (this.ignoringExternal) return;
+                    if (this.ignoringExternal || this.recordingSuppressed) return;
                     cb();
                 };
                 video.addEventListener('pause', listener);
@@ -217,7 +245,7 @@ export default class BindingPrimingSupport {
             },
             onExternalPlay: (cb) => {
                 const listener = () => {
-                    if (this.ignoringExternal) return;
+                    if (this.ignoringExternal || this.recordingSuppressed) return;
                     cb();
                 };
                 video.addEventListener('play', listener);
@@ -241,27 +269,7 @@ export default class BindingPrimingSupport {
     }
 
     private trackKinds() {
-        const subtitles = this.context.subtitles();
-        const fileNames = this.context.subtitleFileNames();
-        const samples = new Map<number, string[]>();
-        const tracks = new Map<number, ReturnType<typeof classifySubtitleTrack>>();
-
-        for (const subtitle of subtitles) {
-            const bucket = samples.get(subtitle.track) ?? [];
-            if (bucket.length < 12) {
-                bucket.push(subtitle.text);
-                samples.set(subtitle.track, bucket);
-            }
-            if (!tracks.has(subtitle.track)) {
-                tracks.set(subtitle.track, 'unknown');
-            }
-        }
-
-        for (const [track, texts] of samples) {
-            tracks.set(track, classifySubtitleTrack(fileNames[track], texts.join('\n')));
-        }
-
-        return tracks;
+        return buildPrimingTrackKinds(this.context.subtitles(), this.context.subtitleFileNames());
     }
 
     private waitForSeeked(video: HTMLVideoElement, targetMs: number): Promise<void> {

@@ -12,7 +12,7 @@ import type { MobileOverlayModel } from '@project/common';
 import { ControlType, PostMineAction, PlayMode } from '@project/common';
 import type { PrimingPassKind } from '@project/common/settings/settings';
 import Button from '@mui/material/Button';
-import { nextPrimingSequence } from '@project/common/playback/controllers/priming-pass-sequence';
+import { nextPrimingSequence, nextPrimingLinesPerDrill } from '@project/common/playback/controllers/priming-pass-sequence';
 import { makeStyles } from '@mui/styles';
 import { useTranslation } from 'react-i18next';
 import LogoIcon from '@project/common/components/LogoIcon';
@@ -96,10 +96,12 @@ interface Props {
     onPlaybackRate: (playbackRate: number) => void;
     onPlayModeSelected: (playMode: PlayMode) => void;
     onPrimingSequence?: (sequence: PrimingPassKind[]) => void;
+    onPrimingLinesPerDrill?: (linesPerDrill: number) => void;
     onPrimingNextCue?: () => void;
     onPrimingPreviousCue?: () => void;
     onSeek: (timestamp: number) => void;
     onToggleSubtitles: () => void;
+    onCycleSubtitleTracks?: () => void;
     flexDirection: React.CSSProperties['flexDirection'];
     onPlayModeSelectorOpened?: () => void;
     onPlayModeSelectorClosed?: () => void;
@@ -119,10 +121,12 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
         onPlaybackRate,
         onPlayModeSelected,
         onPrimingSequence,
+        onPrimingLinesPerDrill,
         onPrimingNextCue,
         onPrimingPreviousCue,
         onSeek,
         onToggleSubtitles,
+        onCycleSubtitleTracks,
         flexDirection,
         onPlayModeSelectorOpened,
         onPlayModeSelectorClosed,
@@ -134,9 +138,11 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     const playbackInputRef = useRef<HTMLInputElement>(undefined);
     const [numberControlType, setNumberControlType] = useState<ControlType>(ControlType.timeDisplay);
     const [localPrimingSequence, setLocalPrimingSequence] = useState<PrimingPassKind[]>();
+    const [localPrimingLinesPerDrill, setLocalPrimingLinesPerDrill] = useState<number>();
     const primingActive = model?.playModes?.includes(PlayMode.priming) ?? false;
     const primingSequence = localPrimingSequence ?? model?.primingSequence ?? ['en', 'raw', 'jp'];
     const primingPassIndex = model?.primingPassIndex ?? 0;
+    const primingLinesPerDrill = localPrimingLinesPerDrill ?? model?.primingLinesPerDrill ?? 1;
 
     useEffect(() => {
         if (!localPrimingSequence || !model?.primingSequence) {
@@ -146,6 +152,15 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
             setLocalPrimingSequence(undefined);
         }
     }, [localPrimingSequence, model?.primingSequence]);
+
+    useEffect(() => {
+        if (localPrimingLinesPerDrill === undefined || model?.primingLinesPerDrill === undefined) {
+            return;
+        }
+        if (localPrimingLinesPerDrill === model.primingLinesPerDrill) {
+            setLocalPrimingLinesPerDrill(undefined);
+        }
+    }, [localPrimingLinesPerDrill, model?.primingLinesPerDrill]);
 
     const handleScrollToControlType = useCallback(
         (controlType: ControlType) => {
@@ -326,6 +341,53 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     }, [onPlayModeSelected]);
 
     const { t } = useTranslation();
+
+    const cycleSubtitleTracks = (model?.subtitleTrackCycleEnabled ?? false) && !!onCycleSubtitleTracks;
+
+    const handleSubtitleVisibilityClick = useCallback(() => {
+        if (cycleSubtitleTracks && onCycleSubtitleTracks) {
+            onCycleSubtitleTracks();
+            return;
+        }
+        onToggleSubtitles();
+    }, [cycleSubtitleTracks, onCycleSubtitleTracks, onToggleSubtitles]);
+
+    const subtitleVisibilityTooltip = useMemo(() => {
+        if (!cycleSubtitleTracks) {
+            return t('binds.toggleSubtitles');
+        }
+
+        switch (model?.subtitleTrackVisibilityMode) {
+            case 'all':
+                return t('controls.subtitleTrackVisibilityAll');
+            case 'single0':
+                return t('controls.subtitleTrackVisibilityTrack1');
+            case 'single1':
+                return t('controls.subtitleTrackVisibilityTrack2');
+            case 'none':
+                return t('controls.subtitleTrackVisibilityNone');
+            default:
+                return t('binds.toggleSubtitles');
+        }
+    }, [cycleSubtitleTracks, model?.subtitleTrackVisibilityMode, t]);
+
+    const subtitleVisibilityBadge = useMemo(() => {
+        if (!cycleSubtitleTracks) {
+            return undefined;
+        }
+
+        switch (model?.subtitleTrackVisibilityMode) {
+            case 'single0':
+                return '1';
+            case 'single1':
+                return '2';
+            case 'all':
+                return '1+2';
+            default:
+                return undefined;
+        }
+    }, [cycleSubtitleTracks, model?.subtitleTrackVisibilityMode]);
+
     const { leftNumberControlTitle, numberControlTitle, rightNumberControlTitle } = useMemo(() => {
         switch (numberControlType) {
             case ControlType.timeDisplay:
@@ -452,9 +514,9 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
                 </Grid>
                 {!model.emptySubtitleTrack && (
                     <Grid item>
-                        <Tooltip {...defaultTooltipProps} title={t('binds.toggleSubtitles')}>
-                            <span>
-                                <IconButton disabled={model.recording} onClick={onToggleSubtitles}>
+                        <Tooltip {...defaultTooltipProps} title={subtitleVisibilityTooltip}>
+                            <span style={{ position: 'relative', display: 'inline-flex' }}>
+                                <IconButton disabled={model.recording} onClick={handleSubtitleVisibilityClick}>
                                     {model.subtitlesAreVisible && (
                                         <SubtitlesOffIcon
                                             className={model.recording ? classes.inactiveButton : classes.button}
@@ -464,6 +526,22 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
                                         <SubtitlesIcon
                                             className={model.recording ? classes.inactiveButton : classes.button}
                                         />
+                                    )}
+                                    {subtitleVisibilityBadge && (
+                                        <span
+                                            style={{
+                                                position: 'absolute',
+                                                bottom: 2,
+                                                right: 2,
+                                                fontSize: 9,
+                                                lineHeight: 1,
+                                                fontWeight: 700,
+                                                color: 'white',
+                                                pointerEvents: 'none',
+                                            }}
+                                        >
+                                            {subtitleVisibilityBadge}
+                                        </span>
                                     )}
                                 </IconButton>
                             </span>
@@ -561,6 +639,27 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
                                         </span>
                                     </span>
                                 ))}
+                            </Button>
+                        </Tooltip>
+                    </Grid>
+                )}
+                {primingActive && onPrimingLinesPerDrill && (
+                    <Grid item>
+                        <Tooltip
+                            {...defaultTooltipProps}
+                            title={t('controls.primingLinesPerDrill', { count: primingLinesPerDrill })}
+                        >
+                            <Button
+                                size="small"
+                                onClick={() => {
+                                    const next = nextPrimingLinesPerDrill(primingLinesPerDrill);
+                                    setLocalPrimingLinesPerDrill(next);
+                                    onPrimingLinesPerDrill(next);
+                                }}
+                                className={classes.button}
+                                sx={{ color: 'white', minWidth: 0, px: 1, fontSize: 12, whiteSpace: 'nowrap' }}
+                            >
+                                ×{primingLinesPerDrill}
                             </Button>
                         </Tooltip>
                     </Grid>

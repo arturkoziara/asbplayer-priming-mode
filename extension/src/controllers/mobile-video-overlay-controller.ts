@@ -7,10 +7,12 @@ import type {
     PrimingNextCueMessage,
     PrimingPreviousCueMessage,
     PrimingSequenceMessage,
+    PrimingLinesPerDrillMessage,
 } from '@project/common';
 import type Binding from '@project/extension/src/services/binding';
 import { CachingElementOverlay, OffsetAnchor } from '@project/extension/src/services/element-overlay';
 import { adjacentSubtitle } from '@project/common/key-binder';
+import { detectSubtitleTrackVisibilityMode, loadedSubtitleTrackIndexes } from '@project/common/util';
 import { frameColorScheme, frameColorSchemeClass } from '@project/extension/src/services/frame-color-scheme';
 import { v4 as uuidv4 } from 'uuid';
 import { PlayMode } from '@project/common';
@@ -168,12 +170,17 @@ export class MobileVideoOverlayController {
             } else if (message.message.command === 'priming-sequence') {
                 const command = message as MobileOverlayToVideoCommand<PrimingSequenceMessage>;
                 void this._context.setPrimingSequence(command.message.sequence);
+            } else if (message.message.command === 'priming-lines-per-drill') {
+                const command = message as MobileOverlayToVideoCommand<PrimingLinesPerDrillMessage>;
+                void this._context.setPrimingLinesPerDrill(command.message.linesPerDrill);
             } else if (message.message.command === 'priming-next-cue') {
                 this._context.skipPrimingToNextCue();
                 void this.updateModel();
             } else if (message.message.command === 'priming-previous-cue') {
                 this._context.skipPrimingToPreviousCue();
                 void this.updateModel();
+            } else if (message.message.command === 'cycle-subtitle-tracks') {
+                this._context.cycleSubtitleTrackVisibility();
             } else if (message.message.command === 'playback-mode-selector-opened') {
                 this._playModeSelectorOpen = true;
             } else if (message.message.command === 'hidden') {
@@ -216,15 +223,18 @@ export class MobileVideoOverlayController {
 
     private async _model() {
         const subtitles = this._context.subtitleController.subtitles;
+        const loadedSubtitleTrackIndexesList = loadedSubtitleTrackIndexes(subtitles);
+        const loadedSubtitleTrackCount = loadedSubtitleTrackIndexesList.length;
+        const primingDrilling = this._context.primingSupport.running;
+        const subtitleTrackCycleEnabled = loadedSubtitleTrackCount >= 2 && !primingDrilling;
         const subtitleDisplaying =
             subtitles.length > 0 && this._context.subtitleController.currentSubtitle()[0] !== null;
         const timestamp = this._context.currentTimeMs;
-        const { language, clickToMineDefaultAction, themeType, streamingDisplaySubtitles, seekableTracks } =
+        const { language, clickToMineDefaultAction, themeType, seekableTracks } =
             await this._context.settings.get([
                 'language',
                 'clickToMineDefaultAction',
                 'themeType',
-                'streamingDisplaySubtitles',
                 'seekableTracks',
             ]);
         const model: MobileOverlayModel = {
@@ -241,10 +251,20 @@ export class MobileVideoOverlayController {
             language,
             postMineAction: clickToMineDefaultAction,
             subtitleDisplaying,
-            subtitlesAreVisible: streamingDisplaySubtitles,
+            subtitlesAreVisible: this._context.subtitleController.displaySubtitles,
+            loadedSubtitleTrackCount,
+            subtitleTrackCycleEnabled,
+            subtitleTrackVisibilityMode: subtitleTrackCycleEnabled
+                ? detectSubtitleTrackVisibilityMode(
+                      loadedSubtitleTrackIndexesList,
+                      this._context.subtitleController.displaySubtitles,
+                      this._context.subtitleController.disabledSubtitleTracks
+                  )
+                : undefined,
             playModes: Array.from(this._playModes),
             primingSequence: [...this._context.primingSettings.passSequence],
             primingPassIndex: this._context.primingPassIndex,
+            primingLinesPerDrill: this._context.primingSettings.linesPerDrill ?? 1,
             overlayInstanceId: this._overlayInstanceId,
             themeType,
         };

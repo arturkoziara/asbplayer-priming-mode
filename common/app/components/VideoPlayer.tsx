@@ -10,6 +10,7 @@ import type {
     CardTextFieldValues,
     ControlType,
     IndexedSubtitleModel,
+    MobileOverlayModel,
     PlaybackState,
 } from '@project/common';
 import { PostMineAction, PlayMode, PostMinePlayback } from '@project/common';
@@ -42,6 +43,12 @@ import {
     errorMessageFromVideo,
     formatAsSignedMs,
     timeDurationDisplay,
+    loadedSubtitleTrackIndexes,
+    preferredMiningTrackFromVisibility,
+    extractText,
+    detectSubtitleTrackVisibilityMode,
+    nextSubtitleTrackVisibilityMode,
+    applySubtitleTrackVisibilityMode,
 } from '@project/common/util';
 import { HoveredToken, renderRichTextOntoSubtitles, getAnnotationsHtml } from '@project/common/annotations';
 import Clock from '@project/common/playback/timing/clock';
@@ -71,6 +78,8 @@ import i18n from 'i18next';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { adjacentSubtitle } from '@project/common/key-binder';
+import PrimingSupport from '@project/common/app/services/priming-support';
+import type { PrimingPassKind } from '@project/common/settings/settings';
 import { usePlaybackPreferences } from '@project/common/app/hooks/use-playback-preferences';
 import type { MiningContext } from '@project/common/app/services/mining-context';
 import useSnackbar from '@project/common/hooks/use-snackbar';
@@ -108,6 +117,14 @@ const useStyles = makeStyles<Theme>((theme) => ({
         position: 'absolute',
         zIndex: 10,
         bottom: theme.spacing(1.5),
+    },
+    desktopOverlay: {
+        position: 'absolute',
+        zIndex: 20,
+        top: theme.spacing(1.5),
+        left: '50%',
+        transform: 'translateX(-50%)',
+        pointerEvents: 'auto',
     },
 }));
 
@@ -393,6 +410,8 @@ export default function VideoPlayer({
     const disabledSubtitleTracksRef = useRef(disabledSubtitleTracks);
     disabledSubtitleTracksRef.current = disabledSubtitleTracks;
     const [playModes, setPlayModes] = useState<Set<PlayMode>>(() => new Set([PlayMode.normal]));
+    const playModesRef = useRef(playModes);
+    playModesRef.current = playModes;
     const synchronizePlaybackModes = useCallback(
         (modes: ReadonlySet<PlayMode>) => {
             const synchronizedModes = new Set(modes);
@@ -434,6 +453,11 @@ export default function VideoPlayer({
     const [blurOverlayVisible, setBlurOverlayVisible] = useState<boolean>(false);
     const handleBlurOverlayToggle = useCallback(() => setBlurOverlayVisible((v) => !v), []);
     const mobileOverlayRef = useRef<HTMLDivElement>(null);
+    const primingSupportRef = useRef<PrimingSupport>(undefined);
+    const subtitleFileNamesRef = useRef<string[]>([]);
+    const [primingControlsVisibility, setPrimingControlsVisibility] = useState<boolean>(false);
+    const [, bumpOverlayModel] = useState(0);
+    const refreshOverlayModel = useCallback(() => bumpOverlayModel((v) => v + 1), []);
     const bottomSubtitleContainerRef = useRef<HTMLDivElement>(null);
     const domCacheRef = useRef<OffscreenDomCache | undefined>(undefined);
     const updateSubtitleDomCacheRef = useRef<((subtitles: IndexedSubtitleModel[]) => void) | undefined>(undefined);
@@ -684,8 +708,11 @@ export default function VideoPlayer({
                 playbackModesChanged: (transition) => {
                     const notifications = handlePlaybackModesChanged(transition);
                     if (notifications.length) setAlert({ open: true, notifications });
+                    primingSupportRef.current?.handlePlaybackModesChanged(transition);
+                    refreshOverlayModel();
                 },
                 initialPlaybackSettingsChanged: (settings) => {
+                    primingSupportRef.current?.handleInitialModes(settings.playbackModeTransition);
                     playerChannel.offset(settings.subtitleOffset);
                     clock.rate = settings.playbackRate;
                     playerChannel.playbackRate(settings.playbackRate, false);
@@ -741,6 +768,7 @@ export default function VideoPlayer({
         updatePlayerState,
         updateSubtitlesWithOffset,
         video,
+        refreshOverlayModel,
     ]);
 
     useEffect(() => {
@@ -769,6 +797,129 @@ export default function VideoPlayer({
         (targetMode: PlayMode) => playbackEngineRef.current?.togglePlaybackMode(targetMode),
         []
     );
+
+    const setPrimingVisibleTracks = useCallback((indices: readonly number[]) => {
+        setPrimingControlsVisibility(true);
+        const visible = new Set(indices.map((index) => Number(index)));
+        const trackNumbers = new Set<number>();
+        for (const subtitle of subtitlesRef.current) {
+            trackNumbers.add(Number(subtitle.track));
+        }
+        setDisabledSubtitleTracks((prev) => {
+            const next = { ...prev };
+            for (const track of trackNumbers) {
+                next[track] = !visible.has(track);
+            }
+            return next;
+        });
+    }, []);
+
+    const clearPrimingTrackVisibility = useCallback(() => {
+        setPrimingControlsVisibility(false);
+        setDisabledSubtitleTracks({});
+    }, []);
+
+    const primingActive = useCallback(
+        () => playModesRef.current.has(PlayMode.priming) || (primingSupportRef.current?.running ?? false),
+        []
+    );
+
+    const primingSubtitleNavigationDirection = useCallback(
+        (timestampMs: number): 'next' | 'prev' | undefined => {
+            if (!primingActive()) {
+                return undefined;
+            }
+
+            const allSubtitles = subtitlesRef.current;
+            if (allSubtitles.length === 0) {
+                return undefined;
+            }
+
+            const toleranceMs = 50;
+            const now = clock.time({ maxMs: lengthMsRef.current });
+            const matchesTimestamp = (subtitle: SubtitleModel) =>
+                Math.abs(subtitle.start - timestampMs) <= toleranceMs ||
+                Math.abs(subtitle.originalStart - timestampMs) <= toleranceMs;
+
+            const next = adjacentSubtitle(true, now, allSubtitles, miscSettingsRef.current.seekableTracks);
+            if (next !== null && matchesTimestamp(next)) {
+                return 'next';
+            }
+
+            const previous = adjacentSubtitle(false, now, allSubtitles, miscSettingsRef.current.seekableTracks);
+            if (previous !== null && matchesTimestamp(previous)) {
+                return 'prev';
+            }
+
+            return undefined;
+        },
+        [clock, primingActive]
+    );
+
+    useEffect(() => {
+        if (!video) {
+            return;
+        }
+
+        const primingSupport = new PrimingSupport({
+            video,
+            currentTimeMs: () => video.currentTime * 1000,
+            seek: async (timestampMs) => {
+                video.currentTime = timestampMs / 1000;
+                clock.setTime(timestampMs, { paused: video.paused });
+            },
+            play: async () => {
+                await video.play();
+                clock.start();
+            },
+            pause: () => {
+                video.pause();
+                clock.stop();
+            },
+            subtitles: () => subtitlesRef.current,
+            subtitleFileNames: () => subtitleFileNamesRef.current,
+            setVisibleTracks: setPrimingVisibleTracks,
+            clearPrimingTrackVisibility,
+            resetDisabledSubtitleTracks: () => setDisabledSubtitleTracks({}),
+            getPrimingSettings: () => miscSettingsRef.current.primingSettings,
+            onPrimingStateChanged: refreshOverlayModel,
+        });
+        primingSupportRef.current = primingSupport;
+
+        return () => {
+            primingSupport.destroy();
+            if (primingSupportRef.current === primingSupport) {
+                primingSupportRef.current = undefined;
+            }
+        };
+    }, [video, clock, setPrimingVisibleTracks, clearPrimingTrackVisibility, refreshOverlayModel]);
+
+    useEffect(() => {
+        primingSupportRef.current?.updateSettings(miscSettings.primingSettings);
+    }, [miscSettings.primingSettings]);
+
+    useEffect(() => {
+        primingSupportRef.current?.subtitlesChanged();
+    }, [subtitles]);
+
+    useEffect(() => {
+        if (!video) {
+            return;
+        }
+
+        const refresh = () => refreshOverlayModel();
+        video.addEventListener('timeupdate', refresh);
+        video.addEventListener('seeked', refresh);
+        video.addEventListener('play', refresh);
+        video.addEventListener('pause', refresh);
+
+        return () => {
+            video.removeEventListener('timeupdate', refresh);
+            video.removeEventListener('seeked', refresh);
+            video.removeEventListener('play', refresh);
+            video.removeEventListener('pause', refresh);
+        };
+    }, [video, refreshOverlayModel]);
 
     useEffect(() => {
         const playbackEngine = playbackEngineRef.current;
@@ -827,7 +978,8 @@ export default function VideoPlayer({
             window.close();
         });
 
-        playerChannel.onSubtitles((subtitles) => {
+        playerChannel.onSubtitles((subtitles, subtitleFileNames) => {
+            subtitleFileNamesRef.current = subtitleFileNames;
             const offset = playbackEngineRef.current?.lastSubtitleOffset ?? 0;
             const videoSubtitles = subtitles.map((s, i) => ({
                 ...s,
@@ -997,9 +1149,23 @@ export default function VideoPlayer({
 
     const handleSeekByTimestamp = useCallback(
         (timestampMs: number) => {
+            if (!primingSupportRef.current?.suppressSubtitleNavigationRedirect) {
+                const navigation = primingSubtitleNavigationDirection(timestampMs);
+                if (navigation === 'next') {
+                    primingSupportRef.current?.skipToNextCue();
+                    refreshOverlayModel();
+                    return;
+                }
+                if (navigation === 'prev') {
+                    primingSupportRef.current?.skipToPreviousCue();
+                    refreshOverlayModel();
+                    return;
+                }
+            }
+
             playerChannel.currentTime(timestampMs / 1000);
         },
-        [playerChannel]
+        [playerChannel, primingSubtitleNavigationDirection, refreshOverlayModel]
     );
 
     useEffect(() => {
@@ -1096,20 +1262,20 @@ export default function VideoPlayer({
         return keyBinder.bindSeekToSubtitle(
             (event, subtitle) => {
                 event.preventDefault();
-                playerChannel.currentTime(subtitle.start / 1000);
+                handleSeekByTimestamp(subtitle.start);
             },
             () => !videoRef.current,
             () => clock.time({ maxMs: lengthMs }),
             () => subtitles,
             () => settings.seekableTracks
         );
-    }, [keyBinder, playerChannel, subtitles, lengthMs, clock, settings]);
+    }, [keyBinder, handleSeekByTimestamp, subtitles, lengthMs, clock, settings]);
 
     useEffect(() => {
         return keyBinder.bindSeekToBeginningOfCurrentSubtitle(
             (event, subtitle) => {
                 event.preventDefault();
-                playerChannel.currentTime(subtitle.start / 1000);
+                handleSeekByTimestamp(subtitle.start);
 
                 if (settings.alwaysPlayOnSubtitleRepeat) {
                     playerChannel.play();
@@ -1120,7 +1286,7 @@ export default function VideoPlayer({
             () => subtitles,
             () => settings.seekableTracks
         );
-    }, [keyBinder, playerChannel, subtitles, lengthMs, clock, settings]);
+    }, [keyBinder, playerChannel, handleSeekByTimestamp, subtitles, lengthMs, clock, settings]);
 
     useEffect(() => {
         return keyBinder.bindSeekBackwardOrForward(
@@ -1417,6 +1583,20 @@ export default function VideoPlayer({
                 mediaTimestamp = subtitleTimestampWithDelay(subtitle, settings.streamingScreenshotDelay);
             }
 
+            const miningTrack = primingActive()
+                ? primingSupportRef.current?.preferredMiningTrack()
+                : preferredMiningTrackFromVisibility(
+                      loadedSubtitleTrackIndexes(subtitles),
+                      true,
+                      disabledSubtitleTracksRef.current
+                  );
+            const resolvedCardTextFieldValues = {
+                ...cardTextFieldValues,
+                text:
+                    cardTextFieldValues?.text ??
+                    extractText(subtitle, surroundingSubtitles, miningTrack),
+            };
+
             mineSubtitle(
                 postMineAction,
                 videoFile,
@@ -1425,7 +1605,7 @@ export default function VideoPlayer({
                 video.playbackRate,
                 subtitle,
                 surroundingSubtitles,
-                cardTextFieldValues ?? {},
+                resolvedCardTextFieldValues,
                 mediaTimestamp
             );
         },
@@ -1438,6 +1618,7 @@ export default function VideoPlayer({
             videoFile,
             videoFileName,
             lengthMs,
+            subtitles,
         ]
     );
 
@@ -1721,6 +1902,51 @@ export default function VideoPlayer({
         );
     }, [keyBinder, togglePlaybackMode]);
 
+    useEffect(() => {
+        return keyBinder.bindTogglePriming(
+            (event) => {
+                event.preventDefault();
+                togglePlaybackMode(PlayMode.priming);
+            },
+            () => subtitlesRef.current.length === 0
+        );
+    }, [keyBinder, togglePlaybackMode]);
+
+    useEffect(() => {
+        return keyBinder.bindPrimingRepeatCue(
+            (event) => {
+                event.preventDefault();
+                primingSupportRef.current?.repeatCue();
+                refreshOverlayModel();
+            },
+            () => !primingActive()
+        );
+    }, [keyBinder, primingActive, refreshOverlayModel]);
+
+    useEffect(() => {
+        return keyBinder.bindPrimingSkipPass(
+            (event) => {
+                if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                    return false;
+                }
+                event.preventDefault();
+                primingSupportRef.current?.skipPass();
+                refreshOverlayModel();
+            },
+            () => !primingActive()
+        );
+    }, [keyBinder, primingActive, refreshOverlayModel]);
+
+    useEffect(() => {
+        return keyBinder.bindPrimingExtendGap(
+            (event) => {
+                event.preventDefault();
+                primingSupportRef.current?.extendGap();
+            },
+            () => !primingActive()
+        );
+    }, [keyBinder, primingActive]);
+
     const handleSubtitlesToggle = useCallback(() => {
         setDisplaySubtitles(!displaySubtitles);
         playbackPreferences.displaySubtitles = !displaySubtitles;
@@ -1745,6 +1971,58 @@ export default function VideoPlayer({
     }, [playerChannel, popOut]);
 
     const handlePlayMode = useCallback((targetMode: PlayMode) => togglePlaybackMode(targetMode), [togglePlaybackMode]);
+
+    const handlePrimingSequence = useCallback(
+        (sequence: PrimingPassKind[]) => {
+            const primingSettings = { ...miscSettingsRef.current.primingSettings, passSequence: sequence };
+            onSettingsChanged({ primingSettings });
+            setMiscSettings((prev) => ({ ...prev, primingSettings }));
+            primingSupportRef.current?.updateSettings(primingSettings);
+            refreshOverlayModel();
+        },
+        [onSettingsChanged, refreshOverlayModel]
+    );
+
+    const handlePrimingLinesPerDrill = useCallback(
+        (linesPerDrill: number) => {
+            const normalized = Math.max(1, Math.floor(linesPerDrill));
+            const primingSettings = { ...miscSettingsRef.current.primingSettings, linesPerDrill: normalized };
+            onSettingsChanged({ primingSettings });
+            setMiscSettings((prev) => ({ ...prev, primingSettings }));
+            primingSupportRef.current?.updateSettings(primingSettings);
+            refreshOverlayModel();
+        },
+        [onSettingsChanged, refreshOverlayModel]
+    );
+
+    const handlePrimingNextCue = useCallback(() => {
+        primingSupportRef.current?.skipToNextCue();
+        refreshOverlayModel();
+    }, [refreshOverlayModel]);
+
+    const handlePrimingPreviousCue = useCallback(() => {
+        primingSupportRef.current?.skipToPreviousCue();
+        refreshOverlayModel();
+    }, [refreshOverlayModel]);
+
+    const handleCycleSubtitleTracks = useCallback(() => {
+        if (primingSupportRef.current?.running) {
+            return;
+        }
+
+        const loadedTracks = loadedSubtitleTrackIndexes(subtitlesRef.current);
+        if (loadedTracks.length < 2) {
+            return;
+        }
+
+        const nextDisabled = { ...disabledSubtitleTracksRef.current };
+        const currentMode = detectSubtitleTrackVisibilityMode(loadedTracks, displaySubtitles, nextDisabled);
+        const nextMode = nextSubtitleTrackVisibilityMode(currentMode);
+        const nextDisplay = applySubtitleTrackVisibilityMode(nextMode, loadedTracks, nextDisabled);
+        setDisplaySubtitles(nextDisplay);
+        playbackPreferences.displaySubtitles = nextDisplay;
+        setDisabledSubtitleTracks(nextDisabled);
+    }, [displaySubtitles, playbackPreferences]);
 
     const handleClose = useCallback(() => {
         playerChannel.close();
@@ -1833,6 +2111,16 @@ export default function VideoPlayer({
 
     const handleSwipe = useCallback(
         (direction: Direction) => {
+            if (primingActive()) {
+                if (direction === 'right') {
+                    primingSupportRef.current?.skipToNextCue();
+                } else {
+                    primingSupportRef.current?.skipToPreviousCue();
+                }
+                refreshOverlayModel();
+                return;
+            }
+
             const subtitle = adjacentSubtitle(
                 direction === 'right',
                 clock.time({ maxMs: lengthMs }),
@@ -1840,10 +2128,10 @@ export default function VideoPlayer({
                 miscSettings.seekableTracks
             );
             if (subtitle) {
-                playerChannel.currentTime(subtitle.start / 1000);
+                handleSeekByTimestamp(subtitle.start);
             }
         },
-        [clock, lengthMs, subtitles, playerChannel, miscSettings.seekableTracks]
+        [clock, lengthMs, subtitles, miscSettings.seekableTracks, primingActive, handleSeekByTimestamp, refreshOverlayModel]
     );
 
     useSwipe({
@@ -1961,14 +2249,20 @@ export default function VideoPlayer({
 
     const subtitleElementsWithAlignment = (alignment: SubtitleAlignment) =>
         showSubtitles.filter((s) => subtitleAlignmentForTrack(s.track) === alignment).map(elementForSubtitle);
-    const topSubtitleElements = displaySubtitles ? subtitleElementsWithAlignment('top') : [];
-    const bottomSubtitleElements = displaySubtitles ? subtitleElementsWithAlignment('bottom') : [];
-    const mobileOverlayModel = () => {
-        if (!isMobile || (playing() && mineIntervalStartTimestamp === undefined)) {
+    const effectiveDisplaySubtitles = displaySubtitles || primingControlsVisibility;
+    const topSubtitleElements = effectiveDisplaySubtitles ? subtitleElementsWithAlignment('top') : [];
+    const bottomSubtitleElements = effectiveDisplaySubtitles ? subtitleElementsWithAlignment('bottom') : [];
+
+    const buildOverlayModel = (): MobileOverlayModel | undefined => {
+        if (!video) {
             return undefined;
         }
 
         const timestamp = clock.time({ maxMs: lengthMs });
+        const loadedSubtitleTrackIndexesList = loadedSubtitleTrackIndexes(subtitles);
+        const loadedSubtitleTrackCount = loadedSubtitleTrackIndexesList.length;
+        const primingDrilling = primingSupportRef.current?.running ?? false;
+        const subtitleTrackCycleEnabled = loadedSubtitleTrackCount >= 2 && !primingDrilling;
 
         return {
             offset,
@@ -1983,8 +2277,20 @@ export default function VideoPlayer({
             currentTimestamp: timestamp,
             postMineAction: settings.clickToMineDefaultAction,
             subtitleDisplaying: showSubtitles.length > 0,
-            subtitlesAreVisible: displaySubtitles,
+            subtitlesAreVisible: displaySubtitles || primingControlsVisibility,
+            loadedSubtitleTrackCount,
+            subtitleTrackCycleEnabled,
+            subtitleTrackVisibilityMode: subtitleTrackCycleEnabled
+                ? detectSubtitleTrackVisibilityMode(
+                      loadedSubtitleTrackIndexesList,
+                      displaySubtitles,
+                      disabledSubtitleTracks
+                  )
+                : undefined,
             playModes: Array.from(playModes),
+            primingSequence: [...miscSettings.primingSettings.passSequence],
+            primingPassIndex: primingSupportRef.current?.currentPassIndex ?? 0,
+            primingLinesPerDrill: miscSettings.primingSettings.linesPerDrill ?? 1,
             themeType: settings.themeType,
         };
     };
@@ -2044,19 +2350,25 @@ export default function VideoPlayer({
             />
             <MobileVideoOverlay
                 ref={mobileOverlayRef}
-                model={mobileOverlayModel()}
-                className={classes.mobileOverlay}
-                anchor="bottom"
-                tooltipsEnabled={true}
+                model={buildOverlayModel()}
+                className={isMobile ? classes.mobileOverlay : classes.desktopOverlay}
+                anchor="top"
+                tooltipsEnabled={!isMobile}
                 initialControlType={lastControlType}
-                flexDirection="column"
+                flexDirection={isMobile ? 'column' : 'row'}
                 onScrollToControlType={setLastControlType}
                 onMineSubtitle={() => inferAndExecuteMiningBehavior(settings.clickToMineDefaultAction)}
+                onLoadSubtitles={handleLoadSubtitles}
                 onOffset={handleOffsetChange}
                 onPlaybackRate={handlePlaybackRateChange}
                 onPlayModeSelected={handlePlayMode}
+                onPrimingSequence={handlePrimingSequence}
+                onPrimingLinesPerDrill={handlePrimingLinesPerDrill}
+                onPrimingNextCue={handlePrimingNextCue}
+                onPrimingPreviousCue={handlePrimingPreviousCue}
                 onSeek={handleSeekByTimestamp}
                 onToggleSubtitles={handleSubtitlesToggle}
+                onCycleSubtitleTracks={handleCycleSubtitleTracks}
             />
             <video
                 preload="auto"

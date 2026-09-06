@@ -20,6 +20,12 @@ const jpNameToken = /^(ja|jp|jpn|japanese|nihongo)$/;
 const enNameToken = /^(en|eng|english)$/;
 const languageNameToken = /(?:^|[^a-z])(ja|jp|jpn|japanese|nihongo|en|eng|english)(?=[^a-z]|$)/g;
 
+function textScores(text: string) {
+    const cjk = (text.match(/[\u3040-\u30ff\u3400-\u9fff]/g) ?? []).length;
+    const latin = (text.match(/[A-Za-z]/g) ?? []).length;
+    return { cjk, latin };
+}
+
 export function formatPrimingSequence(sequence: readonly PrimingPassKind[]): string {
     return sequence.map((kind) => kind.toUpperCase()).join(' → ');
 }
@@ -40,6 +46,16 @@ export function nextPrimingSequence(sequence: readonly PrimingPassKind[]): Primi
     return [...next.sequence];
 }
 
+export const maxPrimingLinesPerDrill = 5;
+
+export function nextPrimingLinesPerDrill(
+    current: number,
+    max = maxPrimingLinesPerDrill
+): number {
+    const normalized = Math.max(1, Math.floor(current));
+    return normalized >= max ? 1 : normalized + 1;
+}
+
 export function classifySubtitleTrack(fileName: string | undefined, sampleText: string): PrimingTrackKind {
     const name = (fileName ?? '').toLowerCase();
     const tokens = [...name.matchAll(languageNameToken)].map((match) => match[1]);
@@ -52,6 +68,67 @@ export function classifySubtitleTrack(fileName: string | undefined, sampleText: 
     if (cjk >= 8 && cjk >= latin) return 'jp';
     if (latin >= 12 && latin > cjk * 2) return 'en';
     return 'unknown';
+}
+
+export function buildPrimingTrackKinds(
+    subtitles: readonly { track: number; text: string }[],
+    fileNames: readonly string[]
+): Map<number, PrimingTrackKind> {
+    const samples = new Map<number, string[]>();
+    for (const subtitle of subtitles) {
+        const bucket = samples.get(subtitle.track) ?? [];
+        if (bucket.length < 12) {
+            bucket.push(subtitle.text);
+            samples.set(subtitle.track, bucket);
+        }
+    }
+
+    const kinds = new Map<number, PrimingTrackKind>();
+    for (const track of samples.keys()) {
+        kinds.set(track, classifySubtitleTrack(fileNames[track], (samples.get(track) ?? []).join('\n')));
+    }
+
+    if (kinds.size < 2) {
+        return kinds;
+    }
+
+    const hasJp = [...kinds.values()].some((kind) => kind === 'jp');
+    const hasEn = [...kinds.values()].some((kind) => kind === 'en');
+    if (hasJp && hasEn) {
+        return kinds;
+    }
+
+    const indices = [...kinds.keys()].sort((left, right) => left - right);
+    const scores = indices.map((index) => textScores((samples.get(index) ?? []).join('\n')));
+
+    if (indices.length === 2) {
+        const [leftIndex, rightIndex] = indices;
+        const leftScore = scores[0];
+        const rightScore = scores[1];
+
+        if (leftScore.cjk > rightScore.cjk * 1.5 && leftScore.cjk >= 4) {
+            kinds.set(leftIndex, 'jp');
+            kinds.set(rightIndex, 'en');
+            return kinds;
+        }
+        if (rightScore.cjk > leftScore.cjk * 1.5 && rightScore.cjk >= 4) {
+            kinds.set(leftIndex, 'en');
+            kinds.set(rightIndex, 'jp');
+            return kinds;
+        }
+        if (leftScore.latin > rightScore.latin * 1.5 && leftScore.latin >= 8) {
+            kinds.set(leftIndex, 'en');
+            kinds.set(rightIndex, 'jp');
+            return kinds;
+        }
+        if (rightScore.latin > leftScore.latin * 1.5 && rightScore.latin >= 8) {
+            kinds.set(leftIndex, 'jp');
+            kinds.set(rightIndex, 'en');
+            return kinds;
+        }
+    }
+
+    return kinds;
 }
 
 export function visibleTracksForPass(

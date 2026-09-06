@@ -80,7 +80,7 @@ function createAdapter(overrides: Partial<MediaAdapter> = {}): MediaAdapter {
 }
 
 describe('PrimingController', () => {
-    it('sets visibility before seek on each pass', async () => {
+    it('sets visibility before seek on the first pass of each cue', async () => {
         const media = createAdapter();
         const order: string[] = [];
         media.setVisibleTracks = jest.fn(() => order.push('visible'));
@@ -104,7 +104,64 @@ describe('PrimingController', () => {
 
         controller.start();
         await new Promise((resolve) => setTimeout(resolve, 50));
-        expect(order.indexOf('visible')).toBeLessThan(order.indexOf('seek'));
+        const firstVisible = order.indexOf('visible');
+        const firstSeek = order.indexOf('seek');
+        expect(firstVisible).toBeGreaterThanOrEqual(0);
+        expect(firstSeek).toBeGreaterThan(firstVisible);
+        controller.stop();
+    });
+
+    it('seeks before changing visibility when replaying the same cue on a later pass', async () => {
+        const media = createAdapter();
+        const order: string[] = [];
+        media.setVisibleTracks = jest.fn(() => order.push('visible'));
+        media.seek = jest.fn(async (timestampMs: number) => {
+            order.push(`seek:${timestampMs}`);
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en', 'raw', 'jp'],
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => subtitles,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        const secondSeek = order.indexOf('seek:1000', order.indexOf('seek:1000') + 1);
+        const secondVisible = order.indexOf('visible', order.indexOf('visible') + 1);
+        expect(secondSeek).toBeGreaterThanOrEqual(0);
+        expect(secondVisible).toBeGreaterThan(secondSeek);
+        controller.stop();
+    });
+
+    it('ends each pass at the exact cue end even when postrollMs is configured', async () => {
+        const media = createAdapter();
+        const endTimes: number[] = [];
+        media.waitUntilTime = jest.fn(async (targetMs: number) => {
+            endTimes.push(targetMs);
+            return true;
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                postrollMs: 300,
+                passSequence: ['en'],
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => subtitles,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(endTimes[0]).toBe(2000);
         controller.stop();
     });
 
@@ -202,6 +259,26 @@ describe('PrimingController', () => {
         controller.stop();
     });
 
+    it('seeks to exact cue start even when prerollMs is configured', async () => {
+        const media = createAdapter();
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                prerollMs: 200,
+                passSequence: ['en'],
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => subtitles,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(media.seek).toHaveBeenCalledWith(1000);
+        controller.stop();
+    });
+
     it('skipToPreviousCue returns to the previous drill cue', async () => {
         const media = createAdapter();
         const cueChanges: number[] = [];
@@ -258,6 +335,119 @@ describe('PrimingController', () => {
 
         expect(cueChanges[0]).toBe(1);
         expect(cueChanges.at(-1)).toBe(3);
+        controller.stop();
+    });
+
+    it('plays multiple consecutive lines when linesPerDrill is greater than one', async () => {
+        const threeLines: IndexedSubtitleModel[] = [
+            { ...subtitles[0], index: 0, start: 1000, end: 2000, originalStart: 1000, originalEnd: 2000 },
+            {
+                ...subtitles[0],
+                index: 1,
+                text: 'again',
+                start: 2500,
+                end: 3500,
+                originalStart: 2500,
+                originalEnd: 3500,
+            },
+            { ...subtitles[1], index: 2, start: 4000, end: 5000, originalStart: 4000, originalEnd: 5000 },
+        ];
+        const media = createAdapter();
+        const endTimes: number[] = [];
+        media.waitUntilTime = jest.fn(async (targetMs: number) => {
+            endTimes.push(targetMs);
+            return true;
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 2,
+                postrollMs: 0,
+                prerollMs: 0,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => threeLines,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(endTimes[0]).toBe(3500);
+        controller.stop();
+    });
+
+    it('does not restart a multi-line group when suspended for mining seek', async () => {
+        const threeLines: IndexedSubtitleModel[] = [
+            { ...subtitles[0], index: 0, start: 1000, end: 2000, originalStart: 1000, originalEnd: 2000 },
+            {
+                ...subtitles[0],
+                index: 1,
+                text: 'again',
+                start: 2500,
+                end: 3500,
+                originalStart: 2500,
+                originalEnd: 3500,
+            },
+            { ...subtitles[1], index: 2, start: 4000, end: 5000, originalStart: 4000, originalEnd: 5000 },
+        ];
+
+        const seekHandlers: Array<(t: number) => void> = [];
+        let timeMs = 2800;
+        let releaseWait: ((reached: boolean) => void) | undefined;
+        const media = createAdapter({
+            currentTimeMs: () => timeMs,
+            seek: jest.fn(async (timestampMs: number) => {
+                timeMs = timestampMs;
+            }),
+            waitUntilTime: jest.fn(
+                () =>
+                    new Promise<boolean>((resolve) => {
+                        releaseWait = resolve;
+                    })
+            ),
+            cancelPendingWait: jest.fn(() => {
+                releaseWait?.(false);
+            }),
+            onExternalSeek: (cb) => {
+                seekHandlers.push(cb);
+                return () => {
+                    const index = seekHandlers.indexOf(cb);
+                    if (index >= 0) seekHandlers.splice(index, 1);
+                };
+            },
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 3,
+                postrollMs: 0,
+                prerollMs: 0,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => threeLines,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        const seeksBeforeMine = (media.seek as jest.Mock).mock.calls.length;
+
+        // Simulate mining mid-group (line 2 of 3): suspend then seek to that line's start.
+        controller.suspendForExternalMediaControl();
+        timeMs = 2500;
+        for (const handler of seekHandlers) handler(2500);
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        // Must not restart from group start after the mining seek.
+        const seeksAfterMine = (media.seek as jest.Mock).mock.calls.length;
+        expect(seeksAfterMine).toBe(seeksBeforeMine);
         controller.stop();
     });
 

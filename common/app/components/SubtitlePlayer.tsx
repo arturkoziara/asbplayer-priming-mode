@@ -33,6 +33,8 @@ import {
     mockSurroundingSubtitles,
     surroundingSubtitlesAroundInterval,
     extractText,
+    loadedSubtitleTrackIndexes,
+    preferredMiningTrackFromVisibility,
 } from '@project/common/util';
 import type { SubtitleCollection } from '@project/common/subtitle-collection';
 import type { RichTextWindow, RenderedRichText, SubtitleAnnotations } from '@project/common/annotations';
@@ -1136,8 +1138,16 @@ export default function SubtitlePlayer({
             if (subtitle) {
                 const surroundingSubtitles =
                     index === -1 ? calculateSurroundingSubtitles() : calculateSurroundingSubtitlesForIndex(index);
+                const miningTrack = preferredMiningTrackFromVisibility(
+                    loadedSubtitleTrackIndexes(subtitles),
+                    true,
+                    disabledSubtitleTracks
+                );
                 const cardTextFieldValues = {
-                    text: index === -1 ? text : extractText(subtitle, surroundingSubtitles),
+                    text:
+                        index === -1
+                            ? text
+                            : extractText(subtitle, surroundingSubtitles, miningTrack),
                     word,
                     definition,
                     customFieldValues,
@@ -1154,6 +1164,7 @@ export default function SubtitlePlayer({
             calculateSurroundingSubtitles,
             calculateSurroundingSubtitlesForIndex,
             subtitles,
+            disabledSubtitleTracks,
         ]
     );
 

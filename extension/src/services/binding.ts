@@ -1,9 +1,14 @@
 import {
+    applySubtitleTrackVisibilityMode,
     asbError,
     buildSubtitleTracks,
     clampMediaTimestamp,
+    detectSubtitleTrackVisibilityMode,
     errorMessageFromVideo,
     extractText,
+    loadedSubtitleTrackIndexes as resolveLoadedSubtitleTrackIndexes,
+    nextSubtitleTrackVisibilityMode,
+    preferredMiningTrackFromVisibility,
     seekWithNudge,
     sourceString,
     subtitleTimestampWithDelay,
@@ -121,7 +126,7 @@ import PlaybackEngine from '@project/common/playback/playback-engine';
 import type { SubtitleOffsetOptions } from '@project/common/playback/playback-engine';
 import VideoFrameTimingDriver from '@project/common/playback/timing/video-frame-timing-driver';
 import InterpolatedContentClock from '@project/extension/src/services/interpolated-content-clock';
-import BindingPrimingSupport from '@project/extension/src/services/binding-priming-support';
+import PrimingSupport from '@project/common/app/services/priming-support';
 
 let netflix = false;
 document.addEventListener('asbplayer-netflix-enabled', (e) => {
@@ -260,7 +265,7 @@ export default class Binding {
     private unsubscribeStatisticsSubtitleMine?: () => void;
 
     private readonly frameId?: string;
-    private readonly primingSupport: BindingPrimingSupport;
+    private readonly primingSupport: PrimingSupport;
     private _primingSettings: PrimingSettings = defaultPrimingSettings;
 
     constructor(video: HTMLMediaElement, options: BindingOptions) {
@@ -273,7 +278,7 @@ export default class Binding {
         this.settings = new SettingsProvider(new ExtensionSettingsStorage());
         this.subtitleController = new SubtitleController(this, this.dictionary, this.settings);
         this.playbackEngine = this._createPlaybackEngine();
-        this.primingSupport = new BindingPrimingSupport({
+        this.primingSupport = new PrimingSupport({
             video: this.video,
             currentTimeMs: () => this.currentTimeMs,
             seek: async (timestampMs) => {
@@ -287,6 +292,9 @@ export default class Binding {
             subtitleFileNames: () => this.subtitleController.subtitleFileNames ?? [],
             setVisibleTracks: (indices) => this.subtitleController.setVisibleTracks(indices),
             clearPrimingTrackVisibility: () => this.subtitleController.clearPrimingTrackVisibility(),
+            resetDisabledSubtitleTracks: () => {
+                this.subtitleController.disabledSubtitleTracks = {};
+            },
             getPrimingSettings: () => this._primingSettings,
             onPrimingStateChanged: () => {
                 void this.mobileVideoOverlayController.updateModel();
@@ -336,8 +344,18 @@ export default class Binding {
     }
 
     set recordingState(recordingState: RecordingState) {
+        const wasRecording = this._recordingState !== RecordingState.notRecording;
         this._recordingState = recordingState;
-        this.playbackEngine.playbackModesSuppressedChanged(this.recordingMedia);
+        const isRecording = recordingState !== RecordingState.notRecording;
+        this.playbackEngine.playbackModesSuppressedChanged(isRecording);
+
+        // Priming runs outside the playback-engine plan; suppress it while mining so a seek
+        // to the current line inside a multi-line drill does not restart from line 1.
+        if (isRecording && !wasRecording) {
+            this.primingSupport.suspendForRecording();
+        } else if (!isRecording && wasRecording) {
+            this.primingSupport.resumeAfterRecording();
+        }
     }
 
     get synced() {
@@ -390,12 +408,54 @@ export default class Binding {
         this.primingSupport.skipToPreviousCue();
     }
 
+    cycleSubtitleTrackVisibility(): void {
+        if (this.primingSupport.running) {
+            return;
+        }
+
+        const loadedTracks = this.loadedSubtitleTrackIndexes();
+        if (loadedTracks.length < 2) {
+            return;
+        }
+
+        const currentMode = detectSubtitleTrackVisibilityMode(
+            loadedTracks,
+            this.subtitleController.displaySubtitles,
+            this.subtitleController.disabledSubtitleTracks
+        );
+        const nextMode = nextSubtitleTrackVisibilityMode(currentMode);
+        const displaySubtitles = applySubtitleTrackVisibilityMode(
+            nextMode,
+            loadedTracks,
+            this.subtitleController.disabledSubtitleTracks
+        );
+
+        this.subtitleController.displaySubtitles = displaySubtitles;
+        this.subtitleController.refreshCurrentSubtitle = true;
+
+        if (currentMode === 'none' || nextMode === 'none') {
+            void this.settings.set({ streamingDisplaySubtitles: displaySubtitles });
+        }
+
+        this.subtitleController.refreshShowingSubtitles();
+        void this.mobileVideoOverlayController.updateModel();
+    }
+
     extendPrimingGap(): void {
         this.primingSupport.extendGap();
     }
 
     async setPrimingSequence(sequence: PrimingPassKind[]): Promise<void> {
         const primingSettings = { ...this._primingSettings, passSequence: sequence };
+        this._primingSettings = primingSettings;
+        this.primingSupport.updateSettings(primingSettings);
+        await this.settings.set({ primingSettings });
+        void this.mobileVideoOverlayController.updateModel();
+    }
+
+    async setPrimingLinesPerDrill(linesPerDrill: number): Promise<void> {
+        const normalized = Math.max(1, Math.floor(linesPerDrill));
+        const primingSettings = { ...this._primingSettings, linesPerDrill: normalized };
         this._primingSettings = primingSettings;
         this.primingSupport.updateSettings(primingSettings);
         await this.settings.set({ primingSettings });
@@ -1519,11 +1579,33 @@ export default class Binding {
             return;
         }
 
+        const miningTrack = this.primingActive
+            ? this.primingSupport.preferredMiningTrack()
+            : preferredMiningTrackFromVisibility(
+                  this.loadedSubtitleTrackIndexes(),
+                  this.subtitleController.displaySubtitles,
+                  this.subtitleController.disabledSubtitleTracks
+              );
+        const minedSubtitle =
+            miningTrack === undefined
+                ? subtitle
+                : (surroundingSubtitles.find(
+                      (candidate) =>
+                          candidate.track === miningTrack &&
+                          candidate.start < subtitle.end &&
+                          candidate.end > subtitle.start
+                  ) ?? subtitle);
+        const minedSurroundingSubtitles = surroundingSubtitles;
+        const minedText =
+            !text || minedSubtitle.text.includes(text.trim())
+                ? extractText(minedSubtitle, minedSurroundingSubtitles, miningTrack)
+                : text;
+
         if (this.copyToClipboardOnMine) {
-            void navigator.clipboard.writeText(subtitle.text);
+            void navigator.clipboard.writeText(minedText || minedSubtitle.text);
         }
 
-        const mediaTimestamp = subtitleTimestampWithDelay(subtitle, this.imageDelay);
+        const mediaTimestamp = subtitleTimestampWithDelay(minedSubtitle, this.imageDelay);
 
         if (this.takeScreenshot) {
             await this._prepareScreenshot();
@@ -1540,13 +1622,9 @@ export default class Binding {
             this.wasPlayingBeforeRecordingMedia = !this.video.paused;
             this.recordingMediaStartedTimestamp = this.currentTimeMs;
             this.recordingMediaWithScreenshot = this.takeScreenshot;
-            const start = Math.max(0, subtitle.start - this.audioPaddingStart);
+            const start = Math.max(0, minedSubtitle.start - this.audioPaddingStart);
             await this.seek(start);
             await this.play();
-        }
-
-        if (!text || subtitle.text.includes(text.trim())) {
-            text = extractText(subtitle, surroundingSubtitles);
         }
 
         const imageDelay = Math.max(0, mediaTimestamp - this.currentTimeMs);
@@ -1555,19 +1633,19 @@ export default class Binding {
             sender: 'asbplayer-video',
             message: {
                 command: 'record-media-and-forward-subtitle',
-                subtitle: subtitle,
-                surroundingSubtitles: surroundingSubtitles,
+                subtitle: minedSubtitle,
+                surroundingSubtitles: minedSurroundingSubtitles,
                 record: this.recordMedia,
                 screenshot: this.takeScreenshot,
-                url: this.url(subtitle.start, subtitle.end),
+                url: this.url(minedSubtitle.start, minedSubtitle.end),
                 mediaTimestamp,
-                subtitleFileName: this.subtitleFileName(subtitle.track),
+                subtitleFileName: this.subtitleFileName(minedSubtitle.track),
                 postMineAction: postMineAction,
                 audioPaddingStart: this.audioPaddingStart,
                 audioPaddingEnd: this.audioPaddingEnd,
                 imageDelay,
                 playbackRate: this.video.playbackRate,
-                text,
+                text: minedText,
                 definition,
                 word,
                 customFieldValues,
@@ -2036,6 +2114,10 @@ export default class Binding {
             if (!nonEmptyTrackIndex.includes(subtitle.track)) nonEmptyTrackIndex.push(subtitle.track);
         }
         return nonEmptyTrackIndex;
+    }
+
+    loadedSubtitleTrackIndexes(): number[] {
+        return resolveLoadedSubtitleTrackIndexes(this.subtitleController.subtitles);
     }
 
     private _resetSubtitles() {

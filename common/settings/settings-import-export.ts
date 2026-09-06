@@ -516,6 +516,7 @@ const settingsSchema = {
                 prerollMs: { type: 'number' },
                 postrollMs: { type: 'number' },
                 interPassGapMs: { type: 'number' },
+                linesPerDrill: { type: 'number' },
                 stopAfterCues: { type: 'number' },
                 minCueDurationMs: { type: 'number' },
                 autoAdvance: { type: 'boolean' },

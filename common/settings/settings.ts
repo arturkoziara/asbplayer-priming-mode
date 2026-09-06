@@ -905,6 +905,8 @@ export interface PrimingSettings {
     readonly passSequence: readonly PrimingPassKind[];
     /** Pause between passes, in ms. Last pass uses 0. */
     readonly interPassGapMs: number;
+    /** How many consecutive subtitle lines to play and replay together per drill. */
+    readonly linesPerDrill: number;
     readonly prerollMs: number;
     readonly postrollMs: number;
     readonly stopAfterCues: number;
@@ -920,6 +922,7 @@ export const defaultPrimingSettings: PrimingSettings = {
         { visibleTracks: [1], playbackRate: 1.0, gapMs: 0, gapFactor: 0, blackout: false },
     ],
     interPassGapMs: 250,
+    linesPerDrill: 1,
     prerollMs: 200,
     postrollMs: 150,
     stopAfterCues: 0,
