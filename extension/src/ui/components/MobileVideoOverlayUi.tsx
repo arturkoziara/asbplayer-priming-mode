@@ -13,7 +13,6 @@ import type {
     PlayMode,
     PlayModeMessage,
     PrimingLinesPerDrillMessage,
-    PrimingNavigateByLineMessage,
     PrimingNextCueMessage,
     PrimingPreviousCueMessage,
     PrimingSequenceMessage,
@@ -224,25 +223,6 @@ const MobileVideoOverlayUi = () => {
         [location]
     );
 
-    const handlePrimingNavigateByLine = useCallback(
-        (navigateByLine: boolean) => {
-            if (!location) {
-                return;
-            }
-
-            const command: MobileOverlayToVideoCommand<PrimingNavigateByLineMessage> = {
-                sender: 'asbplayer-mobile-overlay-to-video',
-                message: {
-                    command: 'priming-navigate-by-line',
-                    navigateByLine,
-                },
-                src: location.src,
-            };
-            void browser.runtime.sendMessage(command);
-        },
-        [location]
-    );
-
     const handlePrimingNextCue = useCallback(() => {
         if (!location) {
             return;
@@ -377,7 +357,6 @@ const MobileVideoOverlayUi = () => {
                     onPlayModeSelected={handlePlayModeSelected}
                     onPrimingSequence={handlePrimingSequence}
                     onPrimingLinesPerDrill={handlePrimingLinesPerDrill}
-                    onPrimingNavigateByLine={handlePrimingNavigateByLine}
                     onPrimingNextCue={handlePrimingNextCue}
                     onPrimingPreviousCue={handlePrimingPreviousCue}
                     onToggleSubtitles={handleToggleSubtitles}

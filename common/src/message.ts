@@ -488,11 +488,6 @@ export interface PrimingLinesPerDrillMessage extends Message {
     readonly drillSeconds?: number;
 }
 
-export interface PrimingNavigateByLineMessage extends Message {
-    readonly command: 'priming-navigate-by-line';
-    readonly navigateByLine: boolean;
-}
-
 export interface PrimingNextCueMessage extends Message {
     readonly command: 'priming-next-cue';
 }

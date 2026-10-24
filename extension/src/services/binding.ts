@@ -467,14 +467,6 @@ export default class Binding {
         void this.mobileVideoOverlayController.updateModel();
     }
 
-    async setPrimingNavigateByLine(navigateByLine: boolean): Promise<void> {
-        const primingSettings = { ...this._primingSettings, navigateByLine };
-        this._primingSettings = primingSettings;
-        this.primingSupport.updateSettings(primingSettings);
-        await this.settings.set({ primingSettings });
-        void this.mobileVideoOverlayController.updateModel();
-    }
-
     get primingActive(): boolean {
         return this.playbackEngine.primingActive || this.primingSupport.running;
     }

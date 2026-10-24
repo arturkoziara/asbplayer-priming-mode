@@ -1997,17 +1997,6 @@ export default function VideoPlayer({
         [onSettingsChanged, refreshOverlayModel]
     );
 
-    const handlePrimingNavigateByLine = useCallback(
-        (navigateByLine: boolean) => {
-            const primingSettings = { ...miscSettingsRef.current.primingSettings, navigateByLine };
-            onSettingsChanged({ primingSettings });
-            setMiscSettings((prev) => ({ ...prev, primingSettings }));
-            primingSupportRef.current?.updateSettings(primingSettings);
-            refreshOverlayModel();
-        },
-        [onSettingsChanged, refreshOverlayModel]
-    );
-
     const handlePrimingNextCue = useCallback(() => {
         primingSupportRef.current?.skipToNextCue();
         refreshOverlayModel();
@@ -2313,7 +2302,6 @@ export default function VideoPlayer({
             primingPassIndex: primingSupportRef.current?.currentPassIndex ?? 0,
             primingLinesPerDrill: miscSettings.primingSettings.linesPerDrill ?? 1,
             primingDrillSeconds: miscSettings.primingSettings.drillSeconds ?? 0,
-            primingNavigateByLine: miscSettings.primingSettings.navigateByLine ?? true,
             themeType: settings.themeType,
         };
     };
@@ -2387,7 +2375,6 @@ export default function VideoPlayer({
                 onPlayModeSelected={handlePlayMode}
                 onPrimingSequence={handlePrimingSequence}
                 onPrimingLinesPerDrill={handlePrimingLinesPerDrill}
-                onPrimingNavigateByLine={handlePrimingNavigateByLine}
                 onPrimingNextCue={handlePrimingNextCue}
                 onPrimingPreviousCue={handlePrimingPreviousCue}
                 onSeek={handleSeekByTimestamp}

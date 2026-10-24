@@ -137,6 +137,7 @@ export default class PrimingController {
         void this.restartRun();
     }
 
+    /** Right arrow: start drilling from the subtitle line after the one playing now. */
     skipToNextCue(): void {
         if (!this.active) return;
 
@@ -146,7 +147,11 @@ export default class PrimingController {
             return;
         }
 
-        const target = this.nextStartIndex(this.listIndex);
+        const current = this.playingLine(cues).index;
+        let target = current + 1;
+        while (target < cues.length && cuesOverlap(cues[current], cues[target])) {
+            target += 1;
+        }
         if (target >= cues.length) {
             this.stop();
             return;
@@ -155,12 +160,26 @@ export default class PrimingController {
         this.goToStart(target, cues);
     }
 
+    /**
+     * Left arrow: go back to the last subtitle line. Inside a line that means the one before it;
+     * in the silence after a line it means that line.
+     */
     skipToPreviousCue(): void {
         if (!this.active) return;
-        if (this.listIndex <= 0) return;
 
         const cues = this.drillCues();
-        const target = this.previousStartIndex(this.listIndex);
+        const { index: current, inGroup } = this.playingLine(cues);
+        const cue = cues[current];
+        if (cue === undefined) return;
+
+        const inSilenceAfterLine = inGroup && this.media.currentTimeMs() > cue.end;
+        let target = current;
+        if (!inSilenceAfterLine) {
+            target = current - 1;
+            while (target >= 0 && cuesOverlap(cue, cues[target])) {
+                target -= 1;
+            }
+        }
         if (target < 0) return;
 
         this.goToStart(target, cues);
@@ -405,10 +424,6 @@ export default class PrimingController {
         return Math.max(1, Math.floor(this.settings.linesPerDrill ?? 1));
     }
 
-    private navigateByLine(): boolean {
-        return this.settings.navigateByLine ?? true;
-    }
-
     private rewindFlashOpacity(): number {
         const percent = this.settings.rewindFlashIntensity ?? 18;
         return Math.min(100, Math.max(1, Number.isFinite(percent) ? percent : 18)) / 100;
@@ -435,12 +450,6 @@ export default class PrimingController {
         return end - startIndex;
     }
 
-    private navigationStep(): number {
-        if (this.navigateByLine()) return 1;
-        if (this.drillWindowMs() > 0) return this.groupSize(this.listIndex, this.drillCues());
-        return this.linesPerDrill();
-    }
-
     private groupAt(startIndex: number): DrillGroup | undefined {
         const cues = this.drillCues();
         if (startIndex < 0 || startIndex >= cues.length) return undefined;
@@ -452,49 +461,22 @@ export default class PrimingController {
         };
     }
 
-    private nextStartIndex(currentIndex: number): number {
-        const step = this.navigationStep();
-        if (step === 1) {
-            const cues = this.drillCues();
-            const current = cues[currentIndex];
-            if (current === undefined) return currentIndex + 1;
-
-            let target = currentIndex + 1;
-            while (target < cues.length && cuesOverlap(current, cues[target])) {
-                target += 1;
-            }
-            return target;
+    /**
+     * The drill line under the playhead (or the last one before it, in a silence). Falls back to
+     * the group's first line when the playhead is outside the group, e.g. while a seek is in flight.
+     */
+    private playingLine(cues: readonly IndexedSubtitleModel[]): { index: number; inGroup: boolean } {
+        const group = this.groupAt(this.listIndex);
+        const nowMs = this.media.currentTimeMs();
+        if (group === undefined || nowMs < group.start || nowMs > group.end) {
+            return { index: this.listIndex, inGroup: false };
         }
 
-        return currentIndex + step;
-    }
-
-    private previousStartIndex(currentIndex: number): number {
-        const step = this.navigationStep();
-        if (step === 1) {
-            const cues = this.drillCues();
-            const current = cues[currentIndex];
-            if (current === undefined || currentIndex <= 0) return currentIndex - 1;
-
-            let target = currentIndex - 1;
-            while (target >= 0 && cuesOverlap(current, cues[target])) {
-                target -= 1;
-            }
-            return target;
+        let index = this.listIndex;
+        for (let i = this.listIndex; i < this.listIndex + group.cues.length; ++i) {
+            if (cues[i].start <= nowMs) index = i;
         }
-
-        if (this.drillWindowMs() > 0) return this.previousWindowStartIndex(currentIndex);
-        return currentIndex - step;
-    }
-
-    /** Earliest start index whose time window would end right before currentIndex. */
-    private previousWindowStartIndex(currentIndex: number): number {
-        const cues = this.drillCues();
-        let target = currentIndex - 1;
-        while (target > 0 && target - 1 + this.groupSize(target - 1, cues) <= currentIndex) {
-            target -= 1;
-        }
-        return target;
+        return { index, inGroup: true };
     }
 
     private visibleTracksForCurrentPass(): readonly number[] {
@@ -534,16 +516,10 @@ export default class PrimingController {
         const rawIndex = containing >= 0 ? containing : this.nearestCueIndex(cues, timestampMs);
         if (rawIndex < 0) return undefined;
 
-        const listIndex = this.alignStartIndex(rawIndex);
+        const listIndex = rawIndex;
         const group = this.groupAt(listIndex);
         if (group === undefined) return undefined;
         return { listIndex, group };
-    }
-
-    private alignStartIndex(index: number): number {
-        const step = this.linesPerDrill();
-        if (this.navigateByLine() || this.drillWindowMs() > 0 || step <= 1) return index;
-        return Math.floor(index / step) * step;
     }
 
     private nearestCueIndex(cues: readonly IndexedSubtitleModel[], timestampMs: number): number {

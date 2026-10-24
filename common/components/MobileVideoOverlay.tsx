@@ -102,7 +102,6 @@ interface Props {
     onPlayModeSelected: (playMode: PlayMode) => void;
     onPrimingSequence?: (sequence: PrimingPassKind[]) => void;
     onPrimingLinesPerDrill?: (linesPerDrill: number, drillSeconds: number) => void;
-    onPrimingNavigateByLine?: (navigateByLine: boolean) => void;
     onPrimingNextCue?: () => void;
     onPrimingPreviousCue?: () => void;
     onSeek: (timestamp: number) => void;
@@ -128,7 +127,6 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
         onPlayModeSelected,
         onPrimingSequence,
         onPrimingLinesPerDrill,
-        onPrimingNavigateByLine,
         onPrimingNextCue,
         onPrimingPreviousCue,
         onSeek,
@@ -146,7 +144,6 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     const [numberControlType, setNumberControlType] = useState<ControlType>(ControlType.timeDisplay);
     const [localPrimingSequence, setLocalPrimingSequence] = useState<PrimingPassKind[]>();
     const [localPrimingDrillSize, setLocalPrimingDrillSize] = useState<PrimingDrillSize>();
-    const [localPrimingNavigateByLine, setLocalPrimingNavigateByLine] = useState<boolean>();
     const primingActive = model?.playModes?.includes(PlayMode.priming) ?? false;
     const primingSequence = localPrimingSequence ?? model?.primingSequence ?? ['en', 'raw', 'jp'];
     const primingPassIndex = model?.primingPassIndex ?? 0;
@@ -154,9 +151,7 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
         linesPerDrill: model?.primingLinesPerDrill ?? 1,
         drillSeconds: model?.primingDrillSeconds ?? 0,
     };
-    const primingLinesPerDrill = primingDrillSize.linesPerDrill;
     const primingDrillLabel = formatPrimingDrillSize(primingDrillSize);
-    const primingNavigateByLine = localPrimingNavigateByLine ?? model?.primingNavigateByLine ?? true;
 
     useEffect(() => {
         if (!localPrimingSequence || !model?.primingSequence) {
@@ -178,15 +173,6 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
             setLocalPrimingDrillSize(undefined);
         }
     }, [localPrimingDrillSize, model?.primingLinesPerDrill, model?.primingDrillSeconds]);
-
-    useEffect(() => {
-        if (localPrimingNavigateByLine === undefined || model?.primingNavigateByLine === undefined) {
-            return;
-        }
-        if (localPrimingNavigateByLine === model.primingNavigateByLine) {
-            setLocalPrimingNavigateByLine(undefined);
-        }
-    }, [localPrimingNavigateByLine, model?.primingNavigateByLine]);
 
     const handleScrollToControlType = useCallback(
         (controlType: ControlType) => {
@@ -690,34 +676,6 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
                         </Tooltip>
                     </Grid>
                 )}
-                {primingActive &&
-                    onPrimingNavigateByLine &&
-                    (primingLinesPerDrill > 1 || primingDrillSize.drillSeconds > 0) && (
-                        <Grid item>
-                            <Tooltip
-                                {...defaultTooltipProps}
-                                title={t(
-                                    primingNavigateByLine
-                                        ? 'controls.primingNavigateByLineOn'
-                                        : 'controls.primingNavigateByLineOff',
-                                    { size: primingDrillLabel }
-                                )}
-                            >
-                                <Button
-                                    size="small"
-                                    onClick={() => {
-                                        const next = !primingNavigateByLine;
-                                        setLocalPrimingNavigateByLine(next);
-                                        onPrimingNavigateByLine(next);
-                                    }}
-                                    className={classes.button}
-                                    sx={{ color: 'white', minWidth: 0, px: 1, fontSize: 12, whiteSpace: 'nowrap' }}
-                                >
-                                    {primingNavigateByLine ? '±1' : `±${primingDrillLabel}`}
-                                </Button>
-                            </Tooltip>
-                        </Grid>
-                    )}
                 {!model.recording && (
                     <>
                         <Grid item>

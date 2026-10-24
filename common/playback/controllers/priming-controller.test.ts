@@ -518,66 +518,82 @@ describe('PrimingController', () => {
         controller.stop();
     });
 
-    it('skipToNextCue steps one line when navigateByLine is on in a multi-line drill', async () => {
-        const sixLines = sequentialCues(6);
-        const media = createAdapter();
-        const cueChanges: number[] = [];
+    describe('arrow navigation always moves one subtitle line from the line playing now', () => {
+        // line n: 1000 + n*1500 .. 2000 + n*1500
+        function setup(settings: Partial<typeof defaultPrimingSettings>) {
+            const cues = sequentialCues(8);
+            const state = { timeMs: 1000 };
+            const cueChanges: number[] = [];
+            let releaseWait: ((reached: boolean) => void) | undefined;
+            const media = createAdapter({
+                currentTimeMs: () => state.timeMs,
+                seek: jest.fn(async (timestampMs: number) => {
+                    state.timeMs = timestampMs;
+                }),
+                waitUntilTime: jest.fn(
+                    () =>
+                        new Promise<boolean>((resolve) => {
+                            releaseWait = resolve;
+                        })
+                ),
+                cancelPendingWait: jest.fn(() => releaseWait?.(false)),
+            });
+            const controller = new PrimingController({
+                settings: {
+                    ...defaultPrimingSettings,
+                    passSequence: ['en'],
+                    autoAdvance: false,
+                    interPassGapMs: 0,
+                    ...settings,
+                },
+                subtitles: () => cues,
+                media,
+                onCueChanged: (index) => cueChanges.push(index),
+            });
+            const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+            return { controller, state, cueChanges, tick };
+        }
 
-        const controller = new PrimingController({
-            settings: {
-                ...defaultPrimingSettings,
-                passSequence: ['en'],
-                linesPerDrill: 4,
-                navigateByLine: true,
-                autoAdvance: false,
-                interPassGapMs: 0,
-            },
-            subtitles: () => sixLines,
-            media,
-            onCueChanged: (index) => cueChanges.push(index),
+        it('right goes to the line after the one playing, not the next window', async () => {
+            const { controller, state, cueChanges, tick } = setup({ drillSeconds: 4 }); // window = lines 0-2
+            controller.start();
+            await tick();
+
+            state.timeMs = 4500; // inside line 2
+            controller.skipToNextCue();
+            await tick();
+
+            expect(cueChanges).toEqual([0, 3]);
+            controller.stop();
         });
 
-        controller.start();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        controller.skipToNextCue();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        controller.skipToNextCue();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        controller.skipToPreviousCue();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        it('left goes back to the previous line from inside a line', async () => {
+            const { controller, state, cueChanges, tick } = setup({ linesPerDrill: 4 }); // lines 0-3
+            controller.start();
+            await tick();
 
-        expect(cueChanges).toEqual([0, 1, 2, 1]);
-        controller.stop();
-    });
+            state.timeMs = 6000; // inside line 3
+            controller.skipToPreviousCue();
+            await tick();
+            controller.skipToPreviousCue(); // playhead now at the start of line 2
+            await tick();
 
-    it('skipToNextCue still jumps a full drill group when navigateByLine is off', async () => {
-        const sixLines = sequentialCues(6);
-        const media = createAdapter();
-        const cueChanges: number[] = [];
-
-        const controller = new PrimingController({
-            settings: {
-                ...defaultPrimingSettings,
-                passSequence: ['en'],
-                linesPerDrill: 4,
-                navigateByLine: false,
-                autoAdvance: false,
-                interPassGapMs: 0,
-            },
-            subtitles: () => sixLines,
-            media,
-            onCueChanged: (index) => cueChanges.push(index),
+            expect(cueChanges).toEqual([0, 2, 1]);
+            controller.stop();
         });
 
-        controller.start();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        controller.skipToNextCue();
-        await new Promise((resolve) => setTimeout(resolve, 20));
-        controller.skipToPreviousCue();
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        it('left in the silence after a line goes back to that line', async () => {
+            const { controller, state, cueChanges, tick } = setup({ drillSeconds: 4 });
+            controller.start();
+            await tick();
 
-        expect(cueChanges).toEqual([0, 4, 0]);
-        controller.stop();
+            state.timeMs = 3700; // after line 1 (2500-3500), before line 2
+            controller.skipToPreviousCue();
+            await tick();
+
+            expect(cueChanges).toEqual([0, 1]);
+            controller.stop();
+        });
     });
 
     it('plays a sliding four-line window after stepping one line', async () => {
@@ -594,7 +610,6 @@ describe('PrimingController', () => {
                 ...defaultPrimingSettings,
                 passSequence: ['en'],
                 linesPerDrill: 4,
-                navigateByLine: true,
                 autoAdvance: false,
                 interPassGapMs: 0,
             },

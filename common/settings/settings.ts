@@ -913,10 +913,7 @@ export interface PrimingSettings {
      * 0 = use linesPerDrill.
      */
     readonly drillSeconds: number;
-    /**
-     * When true, left/right navigation moves the drill window by one subtitle line
-     * even if linesPerDrill is greater than 1. Auto-advance still skips a full group.
-     */
+    /** @deprecated Left/right always move by one subtitle line now; kept so stored settings stay valid. */
     readonly navigateByLine: boolean;
     readonly prerollMs: number;
     readonly postrollMs: number;

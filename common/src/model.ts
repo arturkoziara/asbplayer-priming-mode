@@ -341,7 +341,6 @@ export interface MobileOverlayModel {
     primingPassIndex?: number;
     primingLinesPerDrill?: number;
     primingDrillSeconds?: number;
-    primingNavigateByLine?: boolean;
     overlayInstanceId?: string;
 }
 

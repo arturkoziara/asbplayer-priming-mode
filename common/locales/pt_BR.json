@@ -191,9 +191,7 @@
         "hideSubtitlePlayer": "Ocultar lista de legendas",
         "currentTimestamp": "Timestamp atual",
         "showBlurOverlay": "Show Blur Overlay",
-        "hideBlurOverlay": "Hide Blur Overlay",
-        "primingNavigateByLineOn": "Left/right move by one subtitle line — click to skip the full {{size}} group",
-        "primingNavigateByLineOff": "Left/right skip the full {{size}} group — click to move one line at a time"
+        "hideBlurOverlay": "Hide Blur Overlay"
     },
     "copyHistory": {
         "blank": "Em branco",
@@ -670,9 +668,7 @@
         "seekableTracks": "Subtitle tracks affected by playback modes and keyboard shortcuts",
         "autoCopyableTracks": "Subtitle tracks eligible for auto-copy",
         "primingDrillSeconds": "Seconds per drill (0 = use line count)",
-        "primingDrillSecondsHelper": "Drill by time instead of line count: e.g. 15 plays every line that starts within 15 seconds, and always finishes the last line so it is never cut in half.",
-        "primingNavigateByLine": "Navigate by one line",
-        "primingNavigateByLineHelper": "When on, left and right arrows move the drill window by one subtitle line instead of skipping the whole multi-line group. Auto-advance still continues from the next full group."
+        "primingDrillSecondsHelper": "Drill by time instead of line count: e.g. 15 plays every line that starts within 15 seconds, and always finishes the last line so it is never cut in half."
     },
     "statistics": {
         "title": "Statistics",

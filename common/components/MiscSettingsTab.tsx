@@ -589,24 +589,6 @@ const MiscSettingTab: React.FC<Props> = ({
                                 })
                             }
                         />
-                        <SwitchLabelWithHoverEffect
-                            control={
-                                <Switch
-                                    checked={primingSettings.navigateByLine ?? true}
-                                    onChange={(event) =>
-                                        void onSettingChanged('primingSettings', {
-                                            ...primingSettings,
-                                            navigateByLine: event.target.checked,
-                                        })
-                                    }
-                                />
-                            }
-                            label={t('settings.primingNavigateByLine')}
-                            labelPlacement="start"
-                        />
-                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                            {t('settings.primingNavigateByLineHelper')}
-                        </Typography>
                         <NumericSettingInput
                             fullWidth
                             label={t('settings.primingPrerollMs')}
