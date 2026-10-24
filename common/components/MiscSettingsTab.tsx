@@ -672,6 +672,35 @@ const MiscSettingTab: React.FC<Props> = ({
                             label={t('settings.primingRewindFlash')}
                             labelPlacement="start"
                         />
+                        {(primingSettings.rewindFlash ?? true) && (
+                            <NumericSettingInput
+                                fullWidth
+                                integerOnly
+                                label={t('settings.primingRewindFlashIntensity')}
+                                value={primingSettings.rewindFlashIntensity ?? 18}
+                                onValueChange={(value) =>
+                                    void onSettingChanged('primingSettings', {
+                                        ...primingSettings,
+                                        rewindFlashIntensity: Math.min(100, Math.max(1, value)),
+                                    })
+                                }
+                            />
+                        )}
+                        <SwitchLabelWithHoverEffect
+                            control={
+                                <Switch
+                                    checked={primingSettings.rewindSound ?? false}
+                                    onChange={(event) =>
+                                        void onSettingChanged('primingSettings', {
+                                            ...primingSettings,
+                                            rewindSound: event.target.checked,
+                                        })
+                                    }
+                                />
+                            }
+                            label={t('settings.primingRewindSound')}
+                            labelPlacement="start"
+                        />
                     </>
                 )}
                 <SettingsSubSection>{t('settings.subtitleTriggers')}</SettingsSubSection>

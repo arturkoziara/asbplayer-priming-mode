@@ -683,6 +683,8 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
             settings.primingSettings.linesPerDrill === undefined ||
             settings.primingSettings.drillSeconds === undefined ||
             settings.primingSettings.rewindFlash === undefined ||
+            settings.primingSettings.rewindFlashIntensity === undefined ||
+            settings.primingSettings.rewindSound === undefined ||
             settings.primingSettings.navigateByLine === undefined
         ) {
             return {

@@ -27,6 +27,7 @@ export default class PrimingSupport {
     private controller?: PrimingController;
     private blackoutElement?: HTMLDivElement;
     private flashElement?: HTMLDivElement;
+    private audioContext?: AudioContext;
     private ignoreExternalUntil = 0;
     private waitGeneration = 0;
     private desired = false;
@@ -147,6 +148,8 @@ export default class PrimingSupport {
         this.blackoutElement = undefined;
         this.flashElement?.remove();
         this.flashElement = undefined;
+        void this.audioContext?.close();
+        this.audioContext = undefined;
     }
 
     private start(): void {
@@ -180,16 +183,40 @@ export default class PrimingSupport {
         return this.blackoutElement;
     }
 
-    private flashRewind(): void {
+    private flashRewind(opacity: number): void {
         if (!this.flashElement) {
             this.flashElement = this.createVideoOverlay('#fff', '2');
             this.flashElement.style.opacity = '0';
         }
         this.coverVideo(this.flashElement);
-        this.flashElement.animate([{ opacity: 0 }, { opacity: 0.18, offset: 0.25 }, { opacity: 0 }], {
+        this.flashElement.animate([{ opacity: 0 }, { opacity, offset: 0.25 }, { opacity: 0 }], {
             duration: 220,
             easing: 'ease-out',
         });
+    }
+
+    /** A soft, falling ~70ms sine "tick", synthesized so no audio asset is needed. */
+    private playRewindSound(): void {
+        try {
+            this.audioContext ??= new AudioContext();
+            const context = this.audioContext;
+            if (context.state === 'suspended') void context.resume();
+
+            const now = context.currentTime;
+            const oscillator = context.createOscillator();
+            const gain = context.createGain();
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, now);
+            oscillator.frequency.exponentialRampToValueAtTime(587, now + 0.07);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(0.08, now + 0.008);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+            oscillator.connect(gain).connect(context.destination);
+            oscillator.start(now);
+            oscillator.stop(now + 0.1);
+        } catch {
+            // Audio is a nicety; never let it break the drill.
+        }
     }
 
     private createVideoOverlay(background: string, zIndex: string): HTMLDivElement {
@@ -255,7 +282,8 @@ export default class PrimingSupport {
                 const element = this.ensureBlackoutElement();
                 element.style.display = on ? 'block' : 'none';
             },
-            flashRewind: () => this.flashRewind(),
+            flashRewind: (opacity) => this.flashRewind(opacity),
+            playRewindSound: () => this.playRewindSound(),
             waitUntilTime: (targetMs) => this.waitUntilTime(video, targetMs),
             cancelPendingWait: () => this.cancelWait(),
             trackKinds: () => this.trackKinds(),

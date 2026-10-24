@@ -925,6 +925,10 @@ export interface PrimingSettings {
     readonly autoAdvance: boolean;
     /** Briefly flash the video when a drill rewinds to replay the same lines. */
     readonly rewindFlash: boolean;
+    /** Peak whiteness of the rewind flash, in percent (1-100). */
+    readonly rewindFlashIntensity: number;
+    /** Play a short, quiet tick when a drill rewinds to replay. */
+    readonly rewindSound: boolean;
 }
 
 export const defaultPrimingSettings: PrimingSettings = {
@@ -944,6 +948,8 @@ export const defaultPrimingSettings: PrimingSettings = {
     minCueDurationMs: 400,
     autoAdvance: true,
     rewindFlash: true,
+    rewindFlashIntensity: 18,
+    rewindSound: false,
 };
 
 export interface KeyBindSet {

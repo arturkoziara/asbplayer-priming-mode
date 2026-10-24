@@ -451,17 +451,18 @@ describe('PrimingController', () => {
         expect(controller.running).toBe(false);
     });
 
-    it('flashes only when rewinding to replay, and not when the setting is off', async () => {
-        const run = async (rewindFlash: boolean) => {
-            const flashRewind = jest.fn(() => undefined);
-            const media = createAdapter({ flashRewind });
+    it('flashes and ticks only when rewinding to replay, following the settings', async () => {
+        const run = async (settings: { rewindFlash: boolean; rewindFlashIntensity: number; rewindSound: boolean }) => {
+            const flashRewind = jest.fn((_opacity: number) => undefined);
+            const playRewindSound = jest.fn(() => undefined);
+            const media = createAdapter({ flashRewind, playRewindSound });
             const controller = new PrimingController({
                 settings: {
                     ...defaultPrimingSettings,
                     passSequence: ['en', 'raw', 'jp'],
                     autoAdvance: false,
                     interPassGapMs: 0,
-                    rewindFlash,
+                    ...settings,
                 },
                 subtitles: () => subtitles,
                 media,
@@ -469,12 +470,21 @@ describe('PrimingController', () => {
             controller.start();
             await new Promise((resolve) => setTimeout(resolve, 50));
             controller.stop();
-            return flashRewind.mock.calls.length;
+            return {
+                flashes: flashRewind.mock.calls.map(([opacity]) => opacity),
+                sounds: playRewindSound.mock.calls.length,
+            };
         };
 
         // Three passes: the first plays straight in, the next two rewind.
-        expect(await run(true)).toBe(2);
-        expect(await run(false)).toBe(0);
+        expect(await run({ rewindFlash: true, rewindFlashIntensity: 40, rewindSound: false })).toEqual({
+            flashes: [0.4, 0.4],
+            sounds: 0,
+        });
+        expect(await run({ rewindFlash: false, rewindFlashIntensity: 40, rewindSound: true })).toEqual({
+            flashes: [],
+            sounds: 2,
+        });
     });
 
     it('keeps a single long line whole when it is longer than the time window', async () => {

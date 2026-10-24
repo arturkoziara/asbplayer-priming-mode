@@ -523,6 +523,8 @@ const settingsSchema = {
                 minCueDurationMs: { type: 'number' },
                 autoAdvance: { type: 'boolean' },
                 rewindFlash: { type: 'boolean' },
+                rewindFlashIntensity: { type: 'number' },
+                rewindSound: { type: 'boolean' },
             },
         },
         lastPlaybackModes: {

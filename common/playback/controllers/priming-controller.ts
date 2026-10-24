@@ -16,7 +16,9 @@ export interface MediaAdapter {
     setVisibleTracks(indices: readonly number[]): void;
     setBlackout(on: boolean): void;
     /** Short visual cue that playback is rewinding to replay the drill. */
-    flashRewind?(): void;
+    flashRewind?(opacity: number): void;
+    /** Short, quiet audio cue that playback is rewinding. */
+    playRewindSound?(): void;
     waitUntilTime(targetMs: number): Promise<boolean>;
     cancelPendingWait(): void;
     trackKinds(): ReadonlyMap<number, PrimingTrackKind>;
@@ -304,7 +306,8 @@ export default class PrimingController {
 
                 if (!finishedWhileSuspended) {
                     if (!resumeMidPass && replayPass) {
-                        if (this.settings.rewindFlash ?? true) this.media.flashRewind?.();
+                        if (this.settings.rewindFlash ?? true) this.media.flashRewind?.(this.rewindFlashOpacity());
+                        if (this.settings.rewindSound ?? false) this.media.playRewindSound?.();
                         await this.media.seek(startMs);
                     }
 
@@ -396,6 +399,11 @@ export default class PrimingController {
 
     private navigateByLine(): boolean {
         return this.settings.navigateByLine ?? true;
+    }
+
+    private rewindFlashOpacity(): number {
+        const percent = this.settings.rewindFlashIntensity ?? 18;
+        return Math.min(100, Math.max(1, Number.isFinite(percent) ? percent : 18)) / 100;
     }
 
     private drillWindowMs(): number {
