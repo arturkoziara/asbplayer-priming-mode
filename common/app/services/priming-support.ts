@@ -378,12 +378,22 @@ export default class PrimingSupport {
             };
             this.waitResolve = finish;
 
+            // Only count the target as reached when playback runs through it. A jump past it is a
+            // user scrub: leave it to the seek handler instead of treating the pass as finished.
+            let lastMs = currentMs();
+            let lastWallMs = performance.now();
             const onTick = () => {
                 if (generation !== this.waitGeneration) {
                     finish(false);
                     return;
                 }
-                if (currentMs() >= targetMs) {
+                const nowMs = currentMs();
+                const wallMs = performance.now();
+                const maxPlayedMs = (wallMs - lastWallMs) * Math.max(1, video.playbackRate) + 750;
+                const crossedByPlayback = lastMs < targetMs && nowMs - lastMs <= maxPlayedMs;
+                lastMs = nowMs;
+                lastWallMs = wallMs;
+                if (nowMs >= targetMs && crossedByPlayback) {
                     this.waitGeneration += 1;
                     finish(true);
                 }
@@ -404,7 +414,7 @@ export default class PrimingSupport {
                 let handle = 0;
                 const tick = () => {
                     onTick();
-                    if (generation === this.waitGeneration && currentMs() < targetMs) {
+                    if (generation === this.waitGeneration && this.waitResolve === finish) {
                         handle = video.requestVideoFrameCallback(tick);
                     }
                 };
