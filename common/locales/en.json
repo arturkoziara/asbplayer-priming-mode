@@ -528,6 +528,7 @@
         "primingPostrollMs": "Priming postroll (ms)",
         "primingMinCueDurationMs": "Skip cues shorter than (ms)",
         "primingAutoAdvance": "Auto-advance to next cue",
+        "primingRewindFlash": "Flash briefly when rewinding to replay",
         "primingStopAfterCues": "Stop after N cues (0 = unlimited)",
         "primingGapMs": "Gap after pass (ms)",
         "primingGapFactor": "Gap factor (× cue length)",

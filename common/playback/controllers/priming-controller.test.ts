@@ -451,6 +451,32 @@ describe('PrimingController', () => {
         expect(controller.running).toBe(false);
     });
 
+    it('flashes only when rewinding to replay, and not when the setting is off', async () => {
+        const run = async (rewindFlash: boolean) => {
+            const flashRewind = jest.fn(() => undefined);
+            const media = createAdapter({ flashRewind });
+            const controller = new PrimingController({
+                settings: {
+                    ...defaultPrimingSettings,
+                    passSequence: ['en', 'raw', 'jp'],
+                    autoAdvance: false,
+                    interPassGapMs: 0,
+                    rewindFlash,
+                },
+                subtitles: () => subtitles,
+                media,
+            });
+            controller.start();
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            controller.stop();
+            return flashRewind.mock.calls.length;
+        };
+
+        // Three passes: the first plays straight in, the next two rewind.
+        expect(await run(true)).toBe(2);
+        expect(await run(false)).toBe(0);
+    });
+
     it('keeps a single long line whole when it is longer than the time window', async () => {
         const longLine: IndexedSubtitleModel[] = [
             { ...subtitles[0], index: 0, start: 1000, end: 9000, originalStart: 1000, originalEnd: 9000 },

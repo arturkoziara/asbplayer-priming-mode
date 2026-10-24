@@ -657,6 +657,21 @@ const MiscSettingTab: React.FC<Props> = ({
                             label={t('settings.primingAutoAdvance')}
                             labelPlacement="start"
                         />
+                        <SwitchLabelWithHoverEffect
+                            control={
+                                <Switch
+                                    checked={primingSettings.rewindFlash ?? true}
+                                    onChange={(event) =>
+                                        void onSettingChanged('primingSettings', {
+                                            ...primingSettings,
+                                            rewindFlash: event.target.checked,
+                                        })
+                                    }
+                                />
+                            }
+                            label={t('settings.primingRewindFlash')}
+                            labelPlacement="start"
+                        />
                     </>
                 )}
                 <SettingsSubSection>{t('settings.subtitleTriggers')}</SettingsSubSection>

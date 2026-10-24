@@ -923,6 +923,8 @@ export interface PrimingSettings {
     readonly stopAfterCues: number;
     readonly minCueDurationMs: number;
     readonly autoAdvance: boolean;
+    /** Briefly flash the video when a drill rewinds to replay the same lines. */
+    readonly rewindFlash: boolean;
 }
 
 export const defaultPrimingSettings: PrimingSettings = {
@@ -941,6 +943,7 @@ export const defaultPrimingSettings: PrimingSettings = {
     stopAfterCues: 0,
     minCueDurationMs: 400,
     autoAdvance: true,
+    rewindFlash: true,
 };
 
 export interface KeyBindSet {

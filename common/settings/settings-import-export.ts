@@ -522,6 +522,7 @@ const settingsSchema = {
                 stopAfterCues: { type: 'number' },
                 minCueDurationMs: { type: 'number' },
                 autoAdvance: { type: 'boolean' },
+                rewindFlash: { type: 'boolean' },
             },
         },
         lastPlaybackModes: {

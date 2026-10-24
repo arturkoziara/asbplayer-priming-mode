@@ -15,6 +15,8 @@ export interface MediaAdapter {
     setPlaybackRate(rate: number): void;
     setVisibleTracks(indices: readonly number[]): void;
     setBlackout(on: boolean): void;
+    /** Short visual cue that playback is rewinding to replay the drill. */
+    flashRewind?(): void;
     waitUntilTime(targetMs: number): Promise<boolean>;
     cancelPendingWait(): void;
     trackKinds(): ReadonlyMap<number, PrimingTrackKind>;
@@ -291,6 +293,7 @@ export default class PrimingController {
                 const replayPass = this.passIndex > 0;
 
                 if (!resumeMidPass && replayPass) {
+                    if (this.settings.rewindFlash ?? true) this.media.flashRewind?.();
                     await this.media.seek(startMs);
                 }
 

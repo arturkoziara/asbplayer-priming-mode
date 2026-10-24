@@ -26,6 +26,7 @@ export interface PrimingContext {
 export default class PrimingSupport {
     private controller?: PrimingController;
     private blackoutElement?: HTMLDivElement;
+    private flashElement?: HTMLDivElement;
     private ignoreExternalUntil = 0;
     private waitGeneration = 0;
     private desired = false;
@@ -144,6 +145,8 @@ export default class PrimingSupport {
         this.stop();
         this.blackoutElement?.remove();
         this.blackoutElement = undefined;
+        this.flashElement?.remove();
+        this.flashElement = undefined;
     }
 
     private start(): void {
@@ -188,6 +191,30 @@ export default class PrimingSupport {
         return element;
     }
 
+    private flashRewind(): void {
+        if (!this.flashElement) {
+            const element = document.createElement('div');
+            element.style.position = 'absolute';
+            element.style.inset = '0';
+            element.style.background = '#fff';
+            element.style.opacity = '0';
+            element.style.zIndex = '2';
+            element.style.pointerEvents = 'none';
+
+            const parent = this.context.video.parentElement;
+            if (parent && getComputedStyle(parent).position === 'static') {
+                parent.style.position = 'relative';
+            }
+            parent?.insertBefore(element, this.context.video.nextSibling);
+            this.flashElement = element;
+        }
+
+        this.flashElement.animate([{ opacity: 0 }, { opacity: 0.18, offset: 0.25 }, { opacity: 0 }], {
+            duration: 220,
+            easing: 'ease-out',
+        });
+    }
+
     private hideBlackout(): void {
         if (this.blackoutElement) {
             this.blackoutElement.style.display = 'none';
@@ -224,6 +251,7 @@ export default class PrimingSupport {
                 const element = this.ensureBlackoutElement();
                 element.style.display = on ? 'block' : 'none';
             },
+            flashRewind: () => this.flashRewind(),
             waitUntilTime: (targetMs) => this.waitUntilTime(video, targetMs),
             cancelPendingWait: () => this.cancelWait(),
             trackKinds: () => this.trackKinds(),
