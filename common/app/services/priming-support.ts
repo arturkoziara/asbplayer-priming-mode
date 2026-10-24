@@ -172,47 +172,51 @@ export default class PrimingSupport {
     }
 
     private ensureBlackoutElement(): HTMLDivElement {
-        if (this.blackoutElement) return this.blackoutElement;
+        if (!this.blackoutElement) {
+            this.blackoutElement = this.createVideoOverlay('#000', '1');
+            this.blackoutElement.style.display = 'none';
+        }
+        this.coverVideo(this.blackoutElement);
+        return this.blackoutElement;
+    }
 
+    private flashRewind(): void {
+        if (!this.flashElement) {
+            this.flashElement = this.createVideoOverlay('#fff', '2');
+            this.flashElement.style.opacity = '0';
+        }
+        this.coverVideo(this.flashElement);
+        this.flashElement.animate([{ opacity: 0 }, { opacity: 0.18, offset: 0.25 }, { opacity: 0 }], {
+            duration: 220,
+            easing: 'ease-out',
+        });
+    }
+
+    private createVideoOverlay(background: string, zIndex: string): HTMLDivElement {
         const element = document.createElement('div');
         element.style.position = 'absolute';
-        element.style.inset = '0';
-        element.style.background = '#000';
-        element.style.zIndex = '1';
+        element.style.background = background;
+        element.style.zIndex = zIndex;
         element.style.pointerEvents = 'none';
-        element.style.display = 'none';
 
         const parent = this.context.video.parentElement;
         if (parent && getComputedStyle(parent).position === 'static') {
             parent.style.position = 'relative';
         }
         parent?.insertBefore(element, this.context.video.nextSibling);
-        this.blackoutElement = element;
         return element;
     }
 
-    private flashRewind(): void {
-        if (!this.flashElement) {
-            const element = document.createElement('div');
-            element.style.position = 'absolute';
-            element.style.inset = '0';
-            element.style.background = '#fff';
-            element.style.opacity = '0';
-            element.style.zIndex = '2';
-            element.style.pointerEvents = 'none';
-
-            const parent = this.context.video.parentElement;
-            if (parent && getComputedStyle(parent).position === 'static') {
-                parent.style.position = 'relative';
-            }
-            parent?.insertBefore(element, this.context.video.nextSibling);
-            this.flashElement = element;
-        }
-
-        this.flashElement.animate([{ opacity: 0 }, { opacity: 0.18, offset: 0.25 }, { opacity: 0 }], {
-            duration: 220,
-            easing: 'ease-out',
-        });
+    /**
+     * Match the video's own box rather than the parent's: some sites (e.g. YouTube) give the
+     * video's container zero height and absolutely position the video inside it.
+     */
+    private coverVideo(element: HTMLDivElement): void {
+        const video = this.context.video as HTMLVideoElement;
+        element.style.left = `${video.offsetLeft}px`;
+        element.style.top = `${video.offsetTop}px`;
+        element.style.width = `${video.offsetWidth}px`;
+        element.style.height = `${video.offsetHeight}px`;
     }
 
     private hideBlackout(): void {
