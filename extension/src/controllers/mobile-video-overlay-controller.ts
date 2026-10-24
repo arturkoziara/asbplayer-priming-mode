@@ -8,6 +8,7 @@ import type {
     PrimingPreviousCueMessage,
     PrimingSequenceMessage,
     PrimingLinesPerDrillMessage,
+    PrimingNavigateByLineMessage,
 } from '@project/common';
 import type Binding from '@project/extension/src/services/binding';
 import { CachingElementOverlay, OffsetAnchor } from '@project/extension/src/services/element-overlay';
@@ -172,7 +173,13 @@ export class MobileVideoOverlayController {
                 void this._context.setPrimingSequence(command.message.sequence);
             } else if (message.message.command === 'priming-lines-per-drill') {
                 const command = message as MobileOverlayToVideoCommand<PrimingLinesPerDrillMessage>;
-                void this._context.setPrimingLinesPerDrill(command.message.linesPerDrill);
+                void this._context.setPrimingLinesPerDrill(
+                    command.message.linesPerDrill,
+                    command.message.drillSeconds ?? 0
+                );
+            } else if (message.message.command === 'priming-navigate-by-line') {
+                const command = message as MobileOverlayToVideoCommand<PrimingNavigateByLineMessage>;
+                void this._context.setPrimingNavigateByLine(command.message.navigateByLine);
             } else if (message.message.command === 'priming-next-cue') {
                 this._context.skipPrimingToNextCue();
                 void this.updateModel();
@@ -230,13 +237,12 @@ export class MobileVideoOverlayController {
         const subtitleDisplaying =
             subtitles.length > 0 && this._context.subtitleController.currentSubtitle()[0] !== null;
         const timestamp = this._context.currentTimeMs;
-        const { language, clickToMineDefaultAction, themeType, seekableTracks } =
-            await this._context.settings.get([
-                'language',
-                'clickToMineDefaultAction',
-                'themeType',
-                'seekableTracks',
-            ]);
+        const { language, clickToMineDefaultAction, themeType, seekableTracks } = await this._context.settings.get([
+            'language',
+            'clickToMineDefaultAction',
+            'themeType',
+            'seekableTracks',
+        ]);
         const model: MobileOverlayModel = {
             offset: subtitles.length === 0 ? 0 : subtitles[0].start - subtitles[0].originalStart,
             playbackRate: this._context.video.playbackRate,
@@ -265,6 +271,8 @@ export class MobileVideoOverlayController {
             primingSequence: [...this._context.primingSettings.passSequence],
             primingPassIndex: this._context.primingPassIndex,
             primingLinesPerDrill: this._context.primingSettings.linesPerDrill ?? 1,
+            primingDrillSeconds: this._context.primingSettings.drillSeconds ?? 0,
+            primingNavigateByLine: this._context.primingSettings.navigateByLine ?? true,
             overlayInstanceId: this._overlayInstanceId,
             themeType,
         };

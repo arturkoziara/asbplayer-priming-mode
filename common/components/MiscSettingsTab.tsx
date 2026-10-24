@@ -579,6 +579,36 @@ const MiscSettingTab: React.FC<Props> = ({
                         />
                         <NumericSettingInput
                             fullWidth
+                            label={t('settings.primingDrillSeconds')}
+                            helperText={t('settings.primingDrillSecondsHelper')}
+                            value={primingSettings.drillSeconds ?? 0}
+                            onValueChange={(value) =>
+                                void onSettingChanged('primingSettings', {
+                                    ...primingSettings,
+                                    drillSeconds: Math.max(0, value),
+                                })
+                            }
+                        />
+                        <SwitchLabelWithHoverEffect
+                            control={
+                                <Switch
+                                    checked={primingSettings.navigateByLine ?? true}
+                                    onChange={(event) =>
+                                        void onSettingChanged('primingSettings', {
+                                            ...primingSettings,
+                                            navigateByLine: event.target.checked,
+                                        })
+                                    }
+                                />
+                            }
+                            label={t('settings.primingNavigateByLine')}
+                            labelPlacement="start"
+                        />
+                        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                            {t('settings.primingNavigateByLineHelper')}
+                        </Typography>
+                        <NumericSettingInput
+                            fullWidth
                             label={t('settings.primingPrerollMs')}
                             value={primingSettings.prerollMs}
                             onValueChange={(value) =>

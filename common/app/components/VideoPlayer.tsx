@@ -1592,9 +1592,7 @@ export default function VideoPlayer({
                   );
             const resolvedCardTextFieldValues = {
                 ...cardTextFieldValues,
-                text:
-                    cardTextFieldValues?.text ??
-                    extractText(subtitle, surroundingSubtitles, miningTrack),
+                text: cardTextFieldValues?.text ?? extractText(subtitle, surroundingSubtitles, miningTrack),
             };
 
             mineSubtitle(
@@ -1984,9 +1982,24 @@ export default function VideoPlayer({
     );
 
     const handlePrimingLinesPerDrill = useCallback(
-        (linesPerDrill: number) => {
+        (linesPerDrill: number, drillSeconds: number) => {
             const normalized = Math.max(1, Math.floor(linesPerDrill));
-            const primingSettings = { ...miscSettingsRef.current.primingSettings, linesPerDrill: normalized };
+            const primingSettings = {
+                ...miscSettingsRef.current.primingSettings,
+                linesPerDrill: normalized,
+                drillSeconds: Math.max(0, drillSeconds),
+            };
+            onSettingsChanged({ primingSettings });
+            setMiscSettings((prev) => ({ ...prev, primingSettings }));
+            primingSupportRef.current?.updateSettings(primingSettings);
+            refreshOverlayModel();
+        },
+        [onSettingsChanged, refreshOverlayModel]
+    );
+
+    const handlePrimingNavigateByLine = useCallback(
+        (navigateByLine: boolean) => {
+            const primingSettings = { ...miscSettingsRef.current.primingSettings, navigateByLine };
             onSettingsChanged({ primingSettings });
             setMiscSettings((prev) => ({ ...prev, primingSettings }));
             primingSupportRef.current?.updateSettings(primingSettings);
@@ -2131,7 +2144,15 @@ export default function VideoPlayer({
                 handleSeekByTimestamp(subtitle.start);
             }
         },
-        [clock, lengthMs, subtitles, miscSettings.seekableTracks, primingActive, handleSeekByTimestamp, refreshOverlayModel]
+        [
+            clock,
+            lengthMs,
+            subtitles,
+            miscSettings.seekableTracks,
+            primingActive,
+            handleSeekByTimestamp,
+            refreshOverlayModel,
+        ]
     );
 
     useSwipe({
@@ -2291,6 +2312,8 @@ export default function VideoPlayer({
             primingSequence: [...miscSettings.primingSettings.passSequence],
             primingPassIndex: primingSupportRef.current?.currentPassIndex ?? 0,
             primingLinesPerDrill: miscSettings.primingSettings.linesPerDrill ?? 1,
+            primingDrillSeconds: miscSettings.primingSettings.drillSeconds ?? 0,
+            primingNavigateByLine: miscSettings.primingSettings.navigateByLine ?? true,
             themeType: settings.themeType,
         };
     };
@@ -2364,6 +2387,7 @@ export default function VideoPlayer({
                 onPlayModeSelected={handlePlayMode}
                 onPrimingSequence={handlePrimingSequence}
                 onPrimingLinesPerDrill={handlePrimingLinesPerDrill}
+                onPrimingNavigateByLine={handlePrimingNavigateByLine}
                 onPrimingNextCue={handlePrimingNextCue}
                 onPrimingPreviousCue={handlePrimingPreviousCue}
                 onSeek={handleSeekByTimestamp}

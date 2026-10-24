@@ -2,7 +2,9 @@ import { describe, expect, it } from '@jest/globals';
 import {
     buildPrimingTrackKinds,
     classifySubtitleTrack,
+    formatPrimingDrillSize,
     formatPrimingSequence,
+    nextPrimingDrillSize,
     nextPrimingLinesPerDrill,
     nextPrimingSequence,
     preferredDrillTrack,
@@ -24,6 +26,27 @@ describe('priming pass sequence', () => {
         expect(nextPrimingLinesPerDrill(1)).toBe(2);
         expect(nextPrimingLinesPerDrill(4)).toBe(5);
         expect(nextPrimingLinesPerDrill(5)).toBe(1);
+    });
+
+    it('cycles drill size through line counts then seconds presets and back to ×1', () => {
+        expect(nextPrimingDrillSize({ linesPerDrill: 4, drillSeconds: 0 })).toEqual({
+            linesPerDrill: 5,
+            drillSeconds: 0,
+        });
+        expect(nextPrimingDrillSize({ linesPerDrill: 5, drillSeconds: 0 })).toEqual({
+            linesPerDrill: 1,
+            drillSeconds: 10,
+        });
+        expect(nextPrimingDrillSize({ linesPerDrill: 1, drillSeconds: 10 })).toEqual({
+            linesPerDrill: 1,
+            drillSeconds: 15,
+        });
+        expect(nextPrimingDrillSize({ linesPerDrill: 1, drillSeconds: 30 })).toEqual({
+            linesPerDrill: 1,
+            drillSeconds: 0,
+        });
+        expect(formatPrimingDrillSize({ linesPerDrill: 3, drillSeconds: 0 })).toBe('×3');
+        expect(formatPrimingDrillSize({ linesPerDrill: 1, drillSeconds: 15 })).toBe('15s');
     });
 
     it('classifies tracks from filenames and text', () => {

@@ -484,6 +484,13 @@ export interface PrimingSequenceMessage extends Message {
 export interface PrimingLinesPerDrillMessage extends Message {
     readonly command: 'priming-lines-per-drill';
     readonly linesPerDrill: number;
+    /** 0 or undefined = drill by line count. */
+    readonly drillSeconds?: number;
+}
+
+export interface PrimingNavigateByLineMessage extends Message {
+    readonly command: 'priming-navigate-by-line';
+    readonly navigateByLine: boolean;
 }
 
 export interface PrimingNextCueMessage extends Message {

@@ -680,19 +680,23 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
         if (
             settings.primingSettings.passSequence === undefined ||
             settings.primingSettings.interPassGapMs === undefined ||
-            settings.primingSettings.linesPerDrill === undefined
+            settings.primingSettings.linesPerDrill === undefined ||
+            settings.primingSettings.drillSeconds === undefined ||
+            settings.primingSettings.navigateByLine === undefined
         ) {
             return {
                 ...settings,
                 primingSettings: {
                     ...defaultSettings.primingSettings,
                     ...settings.primingSettings,
-                    passSequence:
-                        settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
+                    passSequence: settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
                     interPassGapMs:
                         settings.primingSettings.interPassGapMs ?? defaultSettings.primingSettings.interPassGapMs,
                     linesPerDrill:
                         settings.primingSettings.linesPerDrill ?? defaultSettings.primingSettings.linesPerDrill,
+                    drillSeconds: settings.primingSettings.drillSeconds ?? defaultSettings.primingSettings.drillSeconds,
+                    navigateByLine:
+                        settings.primingSettings.navigateByLine ?? defaultSettings.primingSettings.navigateByLine,
                 },
             };
         }
@@ -705,12 +709,14 @@ export const ensureConsistencyOnRead = (settings: Partial<AsbplayerSettings>) =>
             : {
                   ...defaultSettings.primingSettings,
                   ...settings.primingSettings,
-                  passSequence:
-                      settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
+                  passSequence: settings.primingSettings.passSequence ?? defaultSettings.primingSettings.passSequence,
                   interPassGapMs:
                       settings.primingSettings.interPassGapMs ?? defaultSettings.primingSettings.interPassGapMs,
                   linesPerDrill:
                       settings.primingSettings.linesPerDrill ?? defaultSettings.primingSettings.linesPerDrill,
+                  drillSeconds: settings.primingSettings.drillSeconds ?? defaultSettings.primingSettings.drillSeconds,
+                  navigateByLine:
+                      settings.primingSettings.navigateByLine ?? defaultSettings.primingSettings.navigateByLine,
               };
 
     return {

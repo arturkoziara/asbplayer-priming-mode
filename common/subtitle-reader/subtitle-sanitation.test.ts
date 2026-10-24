@@ -83,6 +83,13 @@ describe('subtitle reader security', () => {
         expect(assertSafeSink(plain.text).textContent).toBe('safe');
     });
 
+    it('drops ASS drawing commands left behind by SRT conversion', async () => {
+        const [subtitle] = await reader().subtitles([
+            srt('\nm 50 0 b 22 0 0 22 0 50 b 0 78 22 100 50 100 b 78 100 100 78 100 50 b 100 22 78 0 50 0'),
+        ]);
+        expect(subtitle.text).toBe('safe');
+    });
+
     it('preserves allowed subtitle formatting, strips every attribute, and is idempotent', () => {
         const input =
             '<b id="x" data-reading="bold" aria-label="bold">bold</b><br><ruby class="reading">語<rt style="color:red">ご</rt><rp>(</rp></ruby>';

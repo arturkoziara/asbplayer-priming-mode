@@ -236,6 +236,7 @@ export default class Binding {
 
     private seekedListener?: EventListener;
     private videoChangeListener?: EventListener;
+    private pageVideoChangedListener?: EventListener;
     private canPlayListener?: EventListener;
     private mouseMoveListener?: (event: MouseEvent) => void;
     private listener?: (
@@ -453,9 +454,21 @@ export default class Binding {
         void this.mobileVideoOverlayController.updateModel();
     }
 
-    async setPrimingLinesPerDrill(linesPerDrill: number): Promise<void> {
+    async setPrimingLinesPerDrill(linesPerDrill: number, drillSeconds = 0): Promise<void> {
         const normalized = Math.max(1, Math.floor(linesPerDrill));
-        const primingSettings = { ...this._primingSettings, linesPerDrill: normalized };
+        const primingSettings = {
+            ...this._primingSettings,
+            linesPerDrill: normalized,
+            drillSeconds: Math.max(0, drillSeconds),
+        };
+        this._primingSettings = primingSettings;
+        this.primingSupport.updateSettings(primingSettings);
+        await this.settings.set({ primingSettings });
+        void this.mobileVideoOverlayController.updateModel();
+    }
+
+    async setPrimingNavigateByLine(navigateByLine: boolean): Promise<void> {
+        const primingSettings = { ...this._primingSettings, navigateByLine };
         this._primingSettings = primingSettings;
         this.primingSupport.updateSettings(primingSettings);
         await this.settings.set({ primingSettings });
@@ -913,19 +926,22 @@ export default class Binding {
         this.subtitleController.onMouseOut = (mouseEvent: MouseEvent) => this.hoveredToken.handleMouseOut(mouseEvent);
 
         if (this.hasPageScript) {
-            const debouncedChangeListener = debounced(
-                (videoChanged: boolean) => {
-                    void this.videoDataSyncController.requestSubtitles({ videoChanged });
-                    this._resetSubtitles();
-                },
-                disneyPlus ? 1000 : 0
-            );
+            const debounceMs = disneyPlus || this._videoSrcChangesIndicateNewVideo ? 1000 : 0;
+            const debouncedChangeListener = debounced((videoChanged: boolean) => {
+                void this.videoDataSyncController.requestSubtitles({ videoChanged });
+                this._resetSubtitles();
+            }, debounceMs);
             this.videoChangeListener = () => {
+                const previousSrc = this._lastLoadedMetadataVideoSrc;
                 const videoSrc = this.video.src || this._fallbackVideoSrc;
-                const sourceChanged = videoSrc !== this._lastLoadedMetadataVideoSrc;
+                const sourceChanged = videoSrc !== previousSrc;
                 this._lastLoadedMetadataVideoSrc = videoSrc;
                 this._updateRegisteredVideoSrc(videoSrc);
-                const sameLocationVideoChanged = this._videoSrcChangesIndicateNewVideo && sourceChanged;
+                // HLS/MSE players (Jellyfin) rotate blob: URLs without changing the title.
+                // Re-extracting embedded MKV subtitles on each rotation freezes the player.
+                const blobRotation = previousSrc.startsWith('blob:') && videoSrc.startsWith('blob:');
+                const sameLocationVideoChanged =
+                    this._videoSrcChangesIndicateNewVideo && sourceChanged && !blobRotation;
 
                 // Player events (e.g. Hulu blob URL rotation) can fire loadedmetadata
                 // without an actual video change. Skip refresh when the picker is open
@@ -950,6 +966,10 @@ export default class Binding {
                 if (disneyPlus) this.disneyPlusClock.reset();
             };
             this.video.addEventListener('loadedmetadata', this.videoChangeListener);
+            this.pageVideoChangedListener = () => {
+                debouncedChangeListener(true);
+            };
+            document.addEventListener('asbplayer-video-changed', this.pageVideoChangedListener);
         }
 
         this.heartbeatInterval = setInterval(() => {
@@ -1490,6 +1510,11 @@ export default class Binding {
         if (this.videoChangeListener) {
             this.video.removeEventListener('loadedmetadata', this.videoChangeListener);
             this.videoChangeListener = undefined;
+        }
+
+        if (this.pageVideoChangedListener) {
+            document.removeEventListener('asbplayer-video-changed', this.pageVideoChangedListener);
+            this.pageVideoChangedListener = undefined;
         }
 
         if (this.mouseMoveListener) {

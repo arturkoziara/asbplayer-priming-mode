@@ -48,12 +48,35 @@ export function nextPrimingSequence(sequence: readonly PrimingPassKind[]): Primi
 
 export const maxPrimingLinesPerDrill = 5;
 
-export function nextPrimingLinesPerDrill(
-    current: number,
-    max = maxPrimingLinesPerDrill
-): number {
+export function nextPrimingLinesPerDrill(current: number, max = maxPrimingLinesPerDrill): number {
     const normalized = Math.max(1, Math.floor(current));
     return normalized >= max ? 1 : normalized + 1;
+}
+
+/** Time-based drill lengths offered after the line-count options when cycling the drill size. */
+export const primingDrillSecondsPresets: readonly number[] = [10, 15, 20, 30];
+
+export interface PrimingDrillSize {
+    readonly linesPerDrill: number;
+    /** 0 = drill by line count. */
+    readonly drillSeconds: number;
+}
+
+/** Cycles ×1 … ×max lines, then each seconds preset, then back to ×1. */
+export function nextPrimingDrillSize(current: PrimingDrillSize, max = maxPrimingLinesPerDrill): PrimingDrillSize {
+    if (current.drillSeconds > 0) {
+        const next = primingDrillSecondsPresets.find((seconds) => seconds > current.drillSeconds);
+        return next === undefined ? { linesPerDrill: 1, drillSeconds: 0 } : { ...current, drillSeconds: next };
+    }
+    const lines = Math.max(1, Math.floor(current.linesPerDrill));
+    if (lines >= max) {
+        return { linesPerDrill: 1, drillSeconds: primingDrillSecondsPresets[0] };
+    }
+    return { linesPerDrill: lines + 1, drillSeconds: 0 };
+}
+
+export function formatPrimingDrillSize(size: PrimingDrillSize): string {
+    return size.drillSeconds > 0 ? `${size.drillSeconds}s` : `×${size.linesPerDrill}`;
 }
 
 export function classifySubtitleTrack(fileName: string | undefined, sampleText: string): PrimingTrackKind {

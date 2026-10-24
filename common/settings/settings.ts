@@ -907,6 +907,17 @@ export interface PrimingSettings {
     readonly interPassGapMs: number;
     /** How many consecutive subtitle lines to play and replay together per drill. */
     readonly linesPerDrill: number;
+    /**
+     * When greater than 0, drill by time instead of line count: keep adding lines that start
+     * within this many seconds of the first line, and always finish the last line (never cut mid-line).
+     * 0 = use linesPerDrill.
+     */
+    readonly drillSeconds: number;
+    /**
+     * When true, left/right navigation moves the drill window by one subtitle line
+     * even if linesPerDrill is greater than 1. Auto-advance still skips a full group.
+     */
+    readonly navigateByLine: boolean;
     readonly prerollMs: number;
     readonly postrollMs: number;
     readonly stopAfterCues: number;
@@ -923,6 +934,8 @@ export const defaultPrimingSettings: PrimingSettings = {
     ],
     interPassGapMs: 250,
     linesPerDrill: 1,
+    drillSeconds: 0,
+    navigateByLine: true,
     prerollMs: 200,
     postrollMs: 150,
     stopAfterCues: 0,

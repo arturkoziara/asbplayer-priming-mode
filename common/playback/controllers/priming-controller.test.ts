@@ -3,6 +3,19 @@ import type { IndexedSubtitleModel } from '@project/common';
 import { defaultPrimingSettings } from '@project/common/settings/settings';
 import PrimingController, { type MediaAdapter } from './priming-controller';
 
+function sequentialCues(count: number): IndexedSubtitleModel[] {
+    return Array.from({ length: count }, (_, index) => ({
+        index,
+        text: `line ${index}`,
+        start: 1000 + index * 1500,
+        end: 2000 + index * 1500,
+        originalStart: 1000 + index * 1500,
+        originalEnd: 2000 + index * 1500,
+        track: 0,
+        displayTime: `00:0${index}`,
+    }));
+}
+
 const subtitles: IndexedSubtitleModel[] = [
     {
         index: 0,
@@ -309,9 +322,27 @@ describe('PrimingController', () => {
     it('skipToNextCue skips the overlapping JP of the same line', async () => {
         const bilingual: IndexedSubtitleModel[] = [
             { ...subtitles[0], index: 0, track: 0, start: 1000, end: 2000, originalStart: 1000, originalEnd: 2000 },
-            { ...subtitles[0], index: 1, text: 'こんにちは', track: 1, start: 1100, end: 2100, originalStart: 1100, originalEnd: 2100 },
+            {
+                ...subtitles[0],
+                index: 1,
+                text: 'こんにちは',
+                track: 1,
+                start: 1100,
+                end: 2100,
+                originalStart: 1100,
+                originalEnd: 2100,
+            },
             { ...subtitles[1], index: 2, track: 0, start: 3000, end: 4000, originalStart: 3000, originalEnd: 4000 },
-            { ...subtitles[1], index: 3, text: '世界', track: 1, start: 3100, end: 4100, originalStart: 3100, originalEnd: 4100 },
+            {
+                ...subtitles[1],
+                index: 3,
+                text: '世界',
+                track: 1,
+                start: 3100,
+                end: 4100,
+                originalStart: 3100,
+                originalEnd: 4100,
+            },
         ];
         const media = createAdapter();
         const cueChanges: number[] = [];
@@ -377,6 +408,170 @@ describe('PrimingController', () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
 
         expect(endTimes[0]).toBe(3500);
+        controller.stop();
+    });
+
+    it('drills by time and always finishes the last line that starts inside the window', async () => {
+        // Cues start every 1.5s and last 1s: 1000-2000, 2500-3500, 4000-5000, 5500-6500, ...
+        const cues = sequentialCues(8);
+        const media = createAdapter();
+        const seeks: number[] = [];
+        const endTimes: number[] = [];
+        media.seek = jest.fn(async (timestampMs: number) => {
+            seeks.push(timestampMs);
+        });
+        media.waitUntilTime = jest.fn(async (targetMs: number) => {
+            endTimes.push(targetMs);
+            return true;
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 1,
+                drillSeconds: 4,
+                prerollMs: 0,
+                postrollMs: 0,
+                autoAdvance: true,
+                stopAfterCues: 2,
+                interPassGapMs: 0,
+            },
+            subtitles: () => cues,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        // Window 1000-5000 contains starts 1000, 2500, 4000 -> ends at the third line's end, 5000.
+        // Next group starts at the fourth line (5500); window 5500-9500 has starts 5500, 7000, 8500 -> 9500.
+        expect(seeks).toEqual([1000, 5500]);
+        expect(endTimes).toEqual([5000, 9500]);
+        expect(controller.running).toBe(false);
+    });
+
+    it('keeps a single long line whole when it is longer than the time window', async () => {
+        const longLine: IndexedSubtitleModel[] = [
+            { ...subtitles[0], index: 0, start: 1000, end: 9000, originalStart: 1000, originalEnd: 9000 },
+            { ...subtitles[1], index: 1, start: 9500, end: 10000, originalStart: 9500, originalEnd: 10000 },
+        ];
+        const media = createAdapter();
+        const endTimes: number[] = [];
+        media.waitUntilTime = jest.fn(async (targetMs: number) => {
+            endTimes.push(targetMs);
+            return true;
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                drillSeconds: 3,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => longLine,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        expect(endTimes[0]).toBe(9000);
+        controller.stop();
+    });
+
+    it('skipToNextCue steps one line when navigateByLine is on in a multi-line drill', async () => {
+        const sixLines = sequentialCues(6);
+        const media = createAdapter();
+        const cueChanges: number[] = [];
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 4,
+                navigateByLine: true,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => sixLines,
+            media,
+            onCueChanged: (index) => cueChanges.push(index),
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToNextCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToNextCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToPreviousCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(cueChanges).toEqual([0, 1, 2, 1]);
+        controller.stop();
+    });
+
+    it('skipToNextCue still jumps a full drill group when navigateByLine is off', async () => {
+        const sixLines = sequentialCues(6);
+        const media = createAdapter();
+        const cueChanges: number[] = [];
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 4,
+                navigateByLine: false,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => sixLines,
+            media,
+            onCueChanged: (index) => cueChanges.push(index),
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToNextCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToPreviousCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(cueChanges).toEqual([0, 4, 0]);
+        controller.stop();
+    });
+
+    it('plays a sliding four-line window after stepping one line', async () => {
+        const sixLines = sequentialCues(6);
+        const media = createAdapter();
+        const endTimes: number[] = [];
+        media.waitUntilTime = jest.fn(async (targetMs: number) => {
+            endTimes.push(targetMs);
+            return true;
+        });
+
+        const controller = new PrimingController({
+            settings: {
+                ...defaultPrimingSettings,
+                passSequence: ['en'],
+                linesPerDrill: 4,
+                navigateByLine: true,
+                autoAdvance: false,
+                interPassGapMs: 0,
+            },
+            subtitles: () => sixLines,
+            media,
+        });
+
+        controller.start();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        controller.skipToNextCue();
+        await new Promise((resolve) => setTimeout(resolve, 20));
+
+        expect(endTimes.at(-1)).toBe(sixLines[4].end);
         controller.stop();
     });
 

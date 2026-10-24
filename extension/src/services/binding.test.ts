@@ -371,11 +371,49 @@ describe('Binding playback mode integration', () => {
         // The heartbeat may update _registeredVideoSrc before loadedmetadata.
         await jest.advanceTimersByTimeAsync(1000);
         video.dispatchEvent(new Event('loadedmetadata'));
-        await jest.advanceTimersByTimeAsync(0);
+        await jest.advanceTimersByTimeAsync(1000);
 
         expect(requestSubtitles).toHaveBeenCalledWith({ videoChanged: true });
         expect(resetSubtitles).toHaveBeenCalledTimes(1);
         expect(displayedSubtitleTexts()).toEqual([]);
+        binding.unbind();
+    });
+
+    it('ignores blob URL rotation when source-change opt-in is enabled', async () => {
+        const video = createVideo();
+        video.src = 'blob:http://192.168.20.201:30013/aaaa';
+        const binding = new Binding(video, bindingOptions(true, true));
+        binding.bind();
+        await jest.advanceTimersByTimeAsync(0);
+        sendSubtitles(binding, [makeSubtitle()]);
+
+        const requestSubtitles = jest.spyOn(binding.videoDataSyncController, 'requestSubtitles');
+        const resetSubtitles = jest.spyOn(binding as any, '_resetSubtitles');
+
+        video.src = 'blob:http://192.168.20.201:30013/bbbb';
+        video.dispatchEvent(new Event('loadedmetadata'));
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(requestSubtitles).not.toHaveBeenCalled();
+        expect(resetSubtitles).not.toHaveBeenCalled();
+        binding.unbind();
+    });
+
+    it('refreshes subtitles when a page script reports a new video', async () => {
+        const video = createVideo();
+        const binding = new Binding(video, bindingOptions(true, true));
+        binding.bind();
+        await jest.advanceTimersByTimeAsync(0);
+        sendSubtitles(binding, [makeSubtitle()]);
+
+        const requestSubtitles = jest.spyOn(binding.videoDataSyncController, 'requestSubtitles');
+        const resetSubtitles = jest.spyOn(binding as any, '_resetSubtitles');
+
+        document.dispatchEvent(new CustomEvent('asbplayer-video-changed'));
+        await jest.advanceTimersByTimeAsync(1000);
+
+        expect(requestSubtitles).toHaveBeenCalledWith({ videoChanged: true });
+        expect(resetSubtitles).toHaveBeenCalledTimes(1);
         binding.unbind();
     });
 

@@ -13,6 +13,10 @@ interface PageConfig {
     // Regex for URLs where script should be loaded
     host: string;
 
+    // Optional pathname regex. Used when Jellyfin/Emby is on a LAN IP or custom port
+    // whose hostname does not contain "jellyfin"/"emby" (e.g. http://192.168.20.201:30013/web/#/video).
+    path?: string;
+
     // Hosts specified as literal strings, not to be evaluated as regexes
     literalHosts?: string[];
 
@@ -103,13 +107,19 @@ async function pageConfigsMergedWithSettingsOverrides(): Promise<PageConfigFile>
     return { pages: mergedPages };
 }
 
+export function pageConfigMatchesUrl(page: Pick<PageConfig, 'host' | 'path' | 'literalHosts'>, url: URL): boolean {
+    if (new RegExp(page.host).test(url.host) || page.literalHosts?.includes(url.host)) {
+        return true;
+    }
+
+    return page.path !== undefined && new RegExp(page.path).test(url.pathname);
+}
+
 export async function currentPageDelegate(): Promise<PageDelegate | undefined> {
     const urlObj = new URL(window.location.href);
     const mergedPageConfig = await pageConfigsMergedWithSettingsOverrides();
     for (const page of mergedPageConfig.pages) {
-        const regex = new RegExp(page.host);
-
-        if (regex.test(urlObj.host) || (page.literalHosts !== undefined && page.literalHosts.includes(urlObj.host))) {
+        if (pageConfigMatchesUrl(page, urlObj)) {
             return new PageDelegate(page, urlObj);
         }
     }

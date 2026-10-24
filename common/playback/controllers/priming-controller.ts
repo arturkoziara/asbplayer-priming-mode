@@ -130,32 +130,30 @@ export default class PrimingController {
     skipToNextCue(): void {
         if (!this.active) return;
 
-        const groups = this.drillGroups();
-        const current = groups[this.listIndex];
-        if (current === undefined) {
+        const cues = this.drillCues();
+        if (this.groupAt(this.listIndex) === undefined) {
             this.stop();
             return;
         }
 
-        const target = this.nextGroupIndex(this.listIndex);
-        if (target >= groups.length) {
+        const target = this.nextStartIndex(this.listIndex);
+        if (target >= cues.length) {
             this.stop();
             return;
         }
 
-        this.goToGroup(target, groups);
+        this.goToStart(target, cues);
     }
 
     skipToPreviousCue(): void {
         if (!this.active) return;
-
-        const groups = this.drillGroups();
         if (this.listIndex <= 0) return;
 
-        const target = this.previousGroupIndex(this.listIndex);
+        const cues = this.drillCues();
+        const target = this.previousStartIndex(this.listIndex);
         if (target < 0) return;
 
-        this.goToGroup(target, groups);
+        this.goToStart(target, cues);
     }
 
     extendCurrentGap(extraMs: number): void {
@@ -177,7 +175,9 @@ export default class PrimingController {
 
     updateSettings(settings: PrimingSettings): void {
         const sequenceChanged = JSON.stringify(this.settings.passSequence) !== JSON.stringify(settings.passSequence);
-        const linesChanged = this.settings.linesPerDrill !== settings.linesPerDrill;
+        const linesChanged =
+            this.settings.linesPerDrill !== settings.linesPerDrill ||
+            (this.settings.drillSeconds ?? 0) !== (settings.drillSeconds ?? 0);
         this.settings = settings;
         if (this.active && (sequenceChanged || linesChanged)) {
             this.passIndex = 0;
@@ -266,7 +266,7 @@ export default class PrimingController {
                 continue;
             }
 
-            const group = this.drillGroups()[this.listIndex];
+            const group = this.groupAt(this.listIndex);
             if (group === undefined) {
                 this.stop();
                 return;
@@ -344,25 +344,25 @@ export default class PrimingController {
             return false;
         }
 
-        const groups = this.drillGroups();
-        const target = this.nextGroupIndex(this.listIndex);
-        if (target >= groups.length) {
+        const cues = this.drillCues();
+        const target = this.listIndex + this.groupSize(this.listIndex, cues);
+        if (target >= cues.length) {
             this.stop();
             return false;
         }
 
         this.listIndex = target;
         this.passIndex = 0;
-        this.onCueChanged?.(groups[this.listIndex].cues[0].index);
+        this.onCueChanged?.(cues[this.listIndex].index);
         return true;
     }
 
-    private goToGroup(listIndex: number, groups: readonly DrillGroup[]): void {
+    private goToStart(listIndex: number, cues: readonly IndexedSubtitleModel[]): void {
         this.listIndex = listIndex;
         this.passIndex = 0;
         this.gapExtensionMs = 0;
         this.suspended = false;
-        this.onCueChanged?.(groups[listIndex].cues[0].index);
+        this.onCueChanged?.(cues[listIndex].index);
         void this.restartRun();
     }
 
@@ -378,27 +378,51 @@ export default class PrimingController {
         return Math.max(1, Math.floor(this.settings.linesPerDrill ?? 1));
     }
 
-    private drillGroups(): DrillGroup[] {
-        const cues = this.drillCues();
-        const linesPerDrill = this.linesPerDrill();
-        if (linesPerDrill === 1) {
-            return cues.map((cue) => ({ cues: [cue], start: cue.start, end: cue.end }));
-        }
-
-        const groups: DrillGroup[] = [];
-        for (let i = 0; i < cues.length; i += linesPerDrill) {
-            const slice = cues.slice(i, i + linesPerDrill);
-            groups.push({
-                cues: slice,
-                start: slice[0].start,
-                end: slice[slice.length - 1].end,
-            });
-        }
-        return groups;
+    private navigateByLine(): boolean {
+        return this.settings.navigateByLine ?? true;
     }
 
-    private nextGroupIndex(currentIndex: number): number {
-        if (this.linesPerDrill() === 1) {
+    private drillWindowMs(): number {
+        const seconds = this.settings.drillSeconds ?? 0;
+        return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+    }
+
+    /**
+     * Number of cues in the drill group starting at startIndex. In time mode, every cue that starts
+     * inside the window is included and played to its end, so a line is never cut in half.
+     */
+    private groupSize(startIndex: number, cues: readonly IndexedSubtitleModel[]): number {
+        const windowMs = this.drillWindowMs();
+        if (windowMs <= 0) return this.linesPerDrill();
+        const first = cues[startIndex];
+        if (first === undefined) return 1;
+        let end = startIndex + 1;
+        while (end < cues.length && cues[end].start < first.start + windowMs) {
+            end += 1;
+        }
+        return end - startIndex;
+    }
+
+    private navigationStep(): number {
+        if (this.navigateByLine()) return 1;
+        if (this.drillWindowMs() > 0) return this.groupSize(this.listIndex, this.drillCues());
+        return this.linesPerDrill();
+    }
+
+    private groupAt(startIndex: number): DrillGroup | undefined {
+        const cues = this.drillCues();
+        if (startIndex < 0 || startIndex >= cues.length) return undefined;
+        const slice = cues.slice(startIndex, startIndex + this.groupSize(startIndex, cues));
+        return {
+            cues: slice,
+            start: slice[0].start,
+            end: slice[slice.length - 1].end,
+        };
+    }
+
+    private nextStartIndex(currentIndex: number): number {
+        const step = this.navigationStep();
+        if (step === 1) {
             const cues = this.drillCues();
             const current = cues[currentIndex];
             if (current === undefined) return currentIndex + 1;
@@ -410,11 +434,12 @@ export default class PrimingController {
             return target;
         }
 
-        return currentIndex + 1;
+        return currentIndex + step;
     }
 
-    private previousGroupIndex(currentIndex: number): number {
-        if (this.linesPerDrill() === 1) {
+    private previousStartIndex(currentIndex: number): number {
+        const step = this.navigationStep();
+        if (step === 1) {
             const cues = this.drillCues();
             const current = cues[currentIndex];
             if (current === undefined || currentIndex <= 0) return currentIndex - 1;
@@ -426,7 +451,18 @@ export default class PrimingController {
             return target;
         }
 
-        return currentIndex - 1;
+        if (this.drillWindowMs() > 0) return this.previousWindowStartIndex(currentIndex);
+        return currentIndex - step;
+    }
+
+    /** Earliest start index whose time window would end right before currentIndex. */
+    private previousWindowStartIndex(currentIndex: number): number {
+        const cues = this.drillCues();
+        let target = currentIndex - 1;
+        while (target > 0 && target - 1 + this.groupSize(target - 1, cues) <= currentIndex) {
+            target -= 1;
+        }
+        return target;
     }
 
     private visibleTracksForCurrentPass(): readonly number[] {
@@ -461,27 +497,36 @@ export default class PrimingController {
     }
 
     private cueContaining(timestampMs: number): { listIndex: number; group: DrillGroup } | undefined {
-        const groups = this.drillGroups();
-        const containing = groups.findIndex((group) => timestampMs >= group.start && timestampMs <= group.end);
-        if (containing >= 0) return { listIndex: containing, group: groups[containing] };
+        const cues = this.drillCues();
+        const containing = cues.findIndex((cue) => timestampMs >= cue.start && timestampMs <= cue.end);
+        const rawIndex = containing >= 0 ? containing : this.nearestCueIndex(cues, timestampMs);
+        if (rawIndex < 0) return undefined;
 
+        const listIndex = this.alignStartIndex(rawIndex);
+        const group = this.groupAt(listIndex);
+        if (group === undefined) return undefined;
+        return { listIndex, group };
+    }
+
+    private alignStartIndex(index: number): number {
+        const step = this.linesPerDrill();
+        if (this.navigateByLine() || this.drillWindowMs() > 0 || step <= 1) return index;
+        return Math.floor(index / step) * step;
+    }
+
+    private nearestCueIndex(cues: readonly IndexedSubtitleModel[], timestampMs: number): number {
         let bestIndex = -1;
         let bestDistance = Number.POSITIVE_INFINITY;
-        for (let i = 0; i < groups.length; ++i) {
-            const group = groups[i];
+        for (let i = 0; i < cues.length; ++i) {
+            const cue = cues[i];
             const distance =
-                timestampMs < group.start
-                    ? group.start - timestampMs
-                    : timestampMs > group.end
-                      ? timestampMs - group.end
-                      : 0;
+                timestampMs < cue.start ? cue.start - timestampMs : timestampMs > cue.end ? timestampMs - cue.end : 0;
             if (distance < bestDistance) {
                 bestDistance = distance;
                 bestIndex = i;
             }
         }
-        if (bestIndex < 0) return undefined;
-        return { listIndex: bestIndex, group: groups[bestIndex] };
+        return bestIndex;
     }
 }
 

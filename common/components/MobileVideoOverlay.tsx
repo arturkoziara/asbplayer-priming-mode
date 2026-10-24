@@ -12,7 +12,12 @@ import type { MobileOverlayModel } from '@project/common';
 import { ControlType, PostMineAction, PlayMode } from '@project/common';
 import type { PrimingPassKind } from '@project/common/settings/settings';
 import Button from '@mui/material/Button';
-import { nextPrimingSequence, nextPrimingLinesPerDrill } from '@project/common/playback/controllers/priming-pass-sequence';
+import {
+    nextPrimingSequence,
+    formatPrimingDrillSize,
+    nextPrimingDrillSize,
+} from '@project/common/playback/controllers/priming-pass-sequence';
+import type { PrimingDrillSize } from '@project/common/playback/controllers/priming-pass-sequence';
 import { makeStyles } from '@mui/styles';
 import { useTranslation } from 'react-i18next';
 import LogoIcon from '@project/common/components/LogoIcon';
@@ -96,7 +101,8 @@ interface Props {
     onPlaybackRate: (playbackRate: number) => void;
     onPlayModeSelected: (playMode: PlayMode) => void;
     onPrimingSequence?: (sequence: PrimingPassKind[]) => void;
-    onPrimingLinesPerDrill?: (linesPerDrill: number) => void;
+    onPrimingLinesPerDrill?: (linesPerDrill: number, drillSeconds: number) => void;
+    onPrimingNavigateByLine?: (navigateByLine: boolean) => void;
     onPrimingNextCue?: () => void;
     onPrimingPreviousCue?: () => void;
     onSeek: (timestamp: number) => void;
@@ -122,6 +128,7 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
         onPlayModeSelected,
         onPrimingSequence,
         onPrimingLinesPerDrill,
+        onPrimingNavigateByLine,
         onPrimingNextCue,
         onPrimingPreviousCue,
         onSeek,
@@ -138,11 +145,18 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     const playbackInputRef = useRef<HTMLInputElement>(undefined);
     const [numberControlType, setNumberControlType] = useState<ControlType>(ControlType.timeDisplay);
     const [localPrimingSequence, setLocalPrimingSequence] = useState<PrimingPassKind[]>();
-    const [localPrimingLinesPerDrill, setLocalPrimingLinesPerDrill] = useState<number>();
+    const [localPrimingDrillSize, setLocalPrimingDrillSize] = useState<PrimingDrillSize>();
+    const [localPrimingNavigateByLine, setLocalPrimingNavigateByLine] = useState<boolean>();
     const primingActive = model?.playModes?.includes(PlayMode.priming) ?? false;
     const primingSequence = localPrimingSequence ?? model?.primingSequence ?? ['en', 'raw', 'jp'];
     const primingPassIndex = model?.primingPassIndex ?? 0;
-    const primingLinesPerDrill = localPrimingLinesPerDrill ?? model?.primingLinesPerDrill ?? 1;
+    const primingDrillSize: PrimingDrillSize = localPrimingDrillSize ?? {
+        linesPerDrill: model?.primingLinesPerDrill ?? 1,
+        drillSeconds: model?.primingDrillSeconds ?? 0,
+    };
+    const primingLinesPerDrill = primingDrillSize.linesPerDrill;
+    const primingDrillLabel = formatPrimingDrillSize(primingDrillSize);
+    const primingNavigateByLine = localPrimingNavigateByLine ?? model?.primingNavigateByLine ?? true;
 
     useEffect(() => {
         if (!localPrimingSequence || !model?.primingSequence) {
@@ -154,13 +168,25 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     }, [localPrimingSequence, model?.primingSequence]);
 
     useEffect(() => {
-        if (localPrimingLinesPerDrill === undefined || model?.primingLinesPerDrill === undefined) {
+        if (localPrimingDrillSize === undefined || model?.primingLinesPerDrill === undefined) {
             return;
         }
-        if (localPrimingLinesPerDrill === model.primingLinesPerDrill) {
-            setLocalPrimingLinesPerDrill(undefined);
+        if (
+            localPrimingDrillSize.linesPerDrill === model.primingLinesPerDrill &&
+            localPrimingDrillSize.drillSeconds === (model.primingDrillSeconds ?? 0)
+        ) {
+            setLocalPrimingDrillSize(undefined);
         }
-    }, [localPrimingLinesPerDrill, model?.primingLinesPerDrill]);
+    }, [localPrimingDrillSize, model?.primingLinesPerDrill, model?.primingDrillSeconds]);
+
+    useEffect(() => {
+        if (localPrimingNavigateByLine === undefined || model?.primingNavigateByLine === undefined) {
+            return;
+        }
+        if (localPrimingNavigateByLine === model.primingNavigateByLine) {
+            setLocalPrimingNavigateByLine(undefined);
+        }
+    }, [localPrimingNavigateByLine, model?.primingNavigateByLine]);
 
     const handleScrollToControlType = useCallback(
         (controlType: ControlType) => {
@@ -647,23 +673,51 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
                     <Grid item>
                         <Tooltip
                             {...defaultTooltipProps}
-                            title={t('controls.primingLinesPerDrill', { count: primingLinesPerDrill })}
+                            title={t('controls.primingLinesPerDrill', { size: primingDrillLabel })}
                         >
                             <Button
                                 size="small"
                                 onClick={() => {
-                                    const next = nextPrimingLinesPerDrill(primingLinesPerDrill);
-                                    setLocalPrimingLinesPerDrill(next);
-                                    onPrimingLinesPerDrill(next);
+                                    const next = nextPrimingDrillSize(primingDrillSize);
+                                    setLocalPrimingDrillSize(next);
+                                    onPrimingLinesPerDrill(next.linesPerDrill, next.drillSeconds);
                                 }}
                                 className={classes.button}
                                 sx={{ color: 'white', minWidth: 0, px: 1, fontSize: 12, whiteSpace: 'nowrap' }}
                             >
-                                ×{primingLinesPerDrill}
+                                {primingDrillLabel}
                             </Button>
                         </Tooltip>
                     </Grid>
                 )}
+                {primingActive &&
+                    onPrimingNavigateByLine &&
+                    (primingLinesPerDrill > 1 || primingDrillSize.drillSeconds > 0) && (
+                        <Grid item>
+                            <Tooltip
+                                {...defaultTooltipProps}
+                                title={t(
+                                    primingNavigateByLine
+                                        ? 'controls.primingNavigateByLineOn'
+                                        : 'controls.primingNavigateByLineOff',
+                                    { size: primingDrillLabel }
+                                )}
+                            >
+                                <Button
+                                    size="small"
+                                    onClick={() => {
+                                        const next = !primingNavigateByLine;
+                                        setLocalPrimingNavigateByLine(next);
+                                        onPrimingNavigateByLine(next);
+                                    }}
+                                    className={classes.button}
+                                    sx={{ color: 'white', minWidth: 0, px: 1, fontSize: 12, whiteSpace: 'nowrap' }}
+                                >
+                                    {primingNavigateByLine ? '±1' : `±${primingDrillLabel}`}
+                                </Button>
+                            </Tooltip>
+                        </Grid>
+                    )}
                 {!model.recording && (
                     <>
                         <Grid item>

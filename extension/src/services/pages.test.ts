@@ -4,6 +4,7 @@ import { afterEach, beforeAll, expect, it } from '@jest/globals';
 import type { PageDelegate as PageDelegateClass } from '@project/extension/src/services/pages';
 
 let PageDelegate: typeof PageDelegateClass;
+let pageConfigMatchesUrl: (typeof import('@project/extension/src/services/pages'))['pageConfigMatchesUrl'];
 
 beforeAll(async () => {
     const storage = {
@@ -20,7 +21,9 @@ beforeAll(async () => {
         configurable: true,
         value: { runtime: { getURL: (path: string) => path } },
     });
-    PageDelegate = (await import('@project/extension/src/services/pages')).PageDelegate;
+    const pages = await import('@project/extension/src/services/pages');
+    PageDelegate = pages.PageDelegate;
+    pageConfigMatchesUrl = pages.pageConfigMatchesUrl;
 });
 
 afterEach(() => {
@@ -106,6 +109,22 @@ it('sorts preferred videos before nonmatching videos for manual selection', () =
     );
 
     expect(sorted).toEqual([playerVideo, firstThumbnailVideo, secondThumbnailVideo]);
+});
+
+it('detects Jellyfin web on a LAN IP and custom port via /web', () => {
+    const jellyfin = pagesConfig.pages.find((page) => page.key === 'embyJellyfin');
+    expect(jellyfin).toBeDefined();
+    const page = jellyfin!;
+
+    expect(pageConfigMatchesUrl(page, new URL('http://192.168.20.201:30013/web/#/video'))).toBe(true);
+    expect(pageConfigMatchesUrl(page, new URL('http://192.168.20.201:30013/web/index.html#/video'))).toBe(true);
+    expect(pageConfigMatchesUrl(page, new URL('http://192.168.20.201:30013/web/#/home'))).toBe(true);
+    expect(pageConfigMatchesUrl(page, new URL('https://media.example.com/jellyfin/web/#/video'))).toBe(true);
+    expect(pageConfigMatchesUrl(page, new URL('http://192.168.20.201:30013/dashboard'))).toBe(false);
+
+    const videoPage = new PageDelegate(page, new URL('http://192.168.20.201:30013/web/#/video'));
+    expect(videoPage.isVideoPage()).toBe(true);
+    expect(new PageDelegate(page, new URL('http://192.168.20.201:30013/web/#/home')).isVideoPage()).toBe(false);
 });
 
 it('preserves auto-sync eligibility and ordering when no selector is configured', () => {

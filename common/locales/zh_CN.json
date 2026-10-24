@@ -191,7 +191,9 @@
         "hideSubtitlePlayer": "收起字幕列表",
         "currentTimestamp": "当前时间",
         "showBlurOverlay": "Show Blur Overlay",
-        "hideBlurOverlay": "Hide Blur Overlay"
+        "hideBlurOverlay": "Hide Blur Overlay",
+        "primingNavigateByLineOn": "Left/right move by one subtitle line — click to skip the full {{size}} group",
+        "primingNavigateByLineOff": "Left/right skip the full {{size}} group — click to move one line at a time"
     },
     "copyHistory": {
         "blank": "空白",
@@ -666,7 +668,11 @@
         "webSocketInterface": "WebSocket 接口",
         "yomitanHelperText": "Yomitan API 配置说明详见 <0>此处</0>。",
         "seekableTracks": "Subtitle tracks affected by playback modes and keyboard shortcuts",
-        "autoCopyableTracks": "Subtitle tracks eligible for auto-copy"
+        "autoCopyableTracks": "Subtitle tracks eligible for auto-copy",
+        "primingDrillSeconds": "Seconds per drill (0 = use line count)",
+        "primingDrillSecondsHelper": "Drill by time instead of line count: e.g. 15 plays every line that starts within 15 seconds, and always finishes the last line so it is never cut in half.",
+        "primingNavigateByLine": "Navigate by one line",
+        "primingNavigateByLineHelper": "When on, left and right arrows move the drill window by one subtitle line instead of skipping the whole multi-line group. Auto-advance still continues from the next full group."
     },
     "statistics": {
         "title": "统计数据",

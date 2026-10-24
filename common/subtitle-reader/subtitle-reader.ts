@@ -1,5 +1,10 @@
 import { compile as parseAss } from 'ass-compiler';
 import SrtParser from '@qgustavor/srt-parser';
+import {
+    assDialogueText,
+    mergeOverlappingLetterCues,
+    stripAssTypesetting,
+} from '@project/common/subtitle-reader/ass-text';
 import { subtitlesToSrt } from '@project/common/subtitle-reader/subtitles-to-srt';
 import { WebVTT } from 'videojs-vtt.js';
 import { XMLParser } from 'fast-xml-parser';
@@ -21,7 +26,6 @@ export const sanitizeSubtitleHtml = (html: string) =>
     });
 
 const vttClassRegex = /<(\/)?c(\.[^>]*)?>/g;
-const assNewLineRegex = RegExp(/\\[nN]/, 'ig');
 // Character classes shared by the Netflix ruby regexes below so they cannot drift apart.
 const netflixRubyKanaClass = '\\p{sc=Hira}\\p{sc=Kana}';
 const netflixRubyBaseClass = `${netflixRubyKanaClass}\\p{sc=Han}々〆〤ヶ`;
@@ -130,10 +134,12 @@ export default class SubtitleReader {
     }
 
     async subtitles(files: File[], flatten?: boolean) {
-        const allNodes = (await Promise.all(files.map((f, i) => this._subtitles(f, flatten === true ? 0 : i))))
-            .flatMap((nodes) => nodes)
-            .filter((node) => node.textImage !== undefined || node.text !== '')
-            .sort((n1, n2) => n1.start - n2.start);
+        const allNodes = mergeOverlappingLetterCues(
+            (await Promise.all(files.map((f, i) => this._subtitles(f, flatten === true ? 0 : i))))
+                .flatMap((nodes) => nodes)
+                .filter((node) => node.textImage !== undefined || node.text !== '')
+                .sort((n1, n2) => n1.start - n2.start || n1.track - n2.track)
+        );
 
         // Sanitize after all parser, filter, decoding, and flattening transformations.
         // Ruby tokenization runs afterwards because it relies on positions in this
@@ -238,15 +244,13 @@ export default class SubtitleReader {
             });
         }
 
-        if (file.name.endsWith('.ass')) {
+        if (file.name.endsWith('.ass') || file.name.endsWith('.ssa')) {
             const nodes = parseAss(await file.text(), {});
             return nodes.dialogues.map((dialogue) => {
                 return {
                     start: Math.round(dialogue.start * 1000),
                     end: Math.round(dialogue.end * 1000),
-                    text: this._filterText(
-                        dialogue.slices.flatMap((slice) => slice.fragments.map((fragment) => fragment.text)).join('')
-                    ).replace(assNewLineRegex, '\n'),
+                    text: this._filterText(assDialogueText(dialogue, !this._removeXml)),
                     track: track,
                 };
             });
@@ -768,10 +772,11 @@ export default class SubtitleReader {
     }
 
     private _filterText(text: string): string {
-        text =
+        text = stripAssTypesetting(
             this._textFilter === undefined
                 ? text
-                : text.replace(this._textFilter.regex, this._textFilter.replacement).trim();
+                : text.replace(this._textFilter.regex, this._textFilter.replacement).trim()
+        );
 
         if (this._removeXml) {
             text = this._decodeHTML(text);
