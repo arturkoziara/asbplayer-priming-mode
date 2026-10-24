@@ -87,6 +87,7 @@ export default class PrimingController {
         this.active = true;
         this.cancelled = false;
         this.suspended = false;
+        this.pausedMidPass = false;
         this.gapExtensionMs = 0;
         this.cuesDrilled = 0;
         this.passIndex = 0;
@@ -117,6 +118,7 @@ export default class PrimingController {
 
     repeatCurrentCue(): void {
         if (!this.active) return;
+        this.pausedMidPass = false;
         this.passIndex = 0;
         this.gapExtensionMs = 0;
         void this.restartRun();
@@ -124,6 +126,7 @@ export default class PrimingController {
 
     skipCurrentPass(): void {
         if (!this.active) return;
+        this.pausedMidPass = false;
         this.gapExtensionMs = 0;
         this.passIndex += 1;
         void this.restartRun();
@@ -171,6 +174,8 @@ export default class PrimingController {
     suspendForExternalMediaControl(): void {
         if (!this.active) return;
         this.suspended = true;
+        // Resume from wherever mining leaves the playhead instead of rewinding the drill window.
+        this.pausedMidPass = true;
         this.cancelSleep();
         this.media.cancelPendingWait();
     }
@@ -183,6 +188,7 @@ export default class PrimingController {
         this.settings = settings;
         if (this.active && (sequenceChanged || linesChanged)) {
             this.passIndex = 0;
+            this.pausedMidPass = false;
             void this.restartRun();
         }
     }
@@ -227,6 +233,7 @@ export default class PrimingController {
                 const found = this.cueContaining(timestampMs);
                 if (found === undefined) return;
                 this.listIndex = found.listIndex;
+                this.pausedMidPass = false;
                 this.passIndex = 0;
                 this.gapExtensionMs = 0;
                 this.onCueChanged?.(found.group.cues[0].index);
@@ -288,30 +295,35 @@ export default class PrimingController {
                     Number.isFinite(durationMs) && durationMs > 0 ? Math.min(durationMs, group.end) : group.end;
 
                 const nowMs = this.media.currentTimeMs();
-                const resumeMidPass = this.pausedMidPass && nowMs >= startMs && nowMs < endMs;
+                const resumeRequested = this.pausedMidPass;
+                const resumeMidPass = resumeRequested && nowMs >= startMs && nowMs < endMs;
+                // e.g. the mined line ran to (or past) the end of the window: this pass already played out.
+                const finishedWhileSuspended = resumeRequested && nowMs >= endMs;
                 this.pausedMidPass = false;
                 const replayPass = this.passIndex > 0;
 
-                if (!resumeMidPass && replayPass) {
-                    if (this.settings.rewindFlash ?? true) this.media.flashRewind?.();
-                    await this.media.seek(startMs);
+                if (!finishedWhileSuspended) {
+                    if (!resumeMidPass && replayPass) {
+                        if (this.settings.rewindFlash ?? true) this.media.flashRewind?.();
+                        await this.media.seek(startMs);
+                    }
+
+                    this.media.setVisibleTracks(this.visibleTracksForCurrentPass());
+                    this.onPassChanged?.(this.passIndex);
+                    this.media.setBlackout(pass.blackout);
+                    this.media.setPlaybackRate(pass.playbackRate);
+
+                    if (!resumeMidPass && !replayPass) {
+                        await this.media.seek(startMs);
+                    }
+                    if (!this.active || this.cancelled) return;
+                    await this.media.play();
+                    if (!this.active || this.cancelled) return;
+
+                    const passCompleted = await this.media.waitUntilTime(endMs);
+                    if (!this.active || this.cancelled) return;
+                    if (!passCompleted || this.suspended) break;
                 }
-
-                this.media.setVisibleTracks(this.visibleTracksForCurrentPass());
-                this.onPassChanged?.(this.passIndex);
-                this.media.setBlackout(pass.blackout);
-                this.media.setPlaybackRate(pass.playbackRate);
-
-                if (!resumeMidPass && !replayPass) {
-                    await this.media.seek(startMs);
-                }
-                if (!this.active || this.cancelled) return;
-                await this.media.play();
-                if (!this.active || this.cancelled) return;
-
-                const passCompleted = await this.media.waitUntilTime(endMs);
-                if (!this.active || this.cancelled) return;
-                if (!passCompleted || this.suspended) break;
 
                 this.media.pause();
 
@@ -362,6 +374,7 @@ export default class PrimingController {
 
     private goToStart(listIndex: number, cues: readonly IndexedSubtitleModel[]): void {
         this.listIndex = listIndex;
+        this.pausedMidPass = false;
         this.passIndex = 0;
         this.gapExtensionMs = 0;
         this.suspended = false;

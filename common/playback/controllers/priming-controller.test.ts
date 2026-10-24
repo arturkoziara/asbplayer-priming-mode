@@ -672,6 +672,89 @@ describe('PrimingController', () => {
         controller.stop();
     });
 
+    describe('resuming after mining', () => {
+        // One 10s window (three lines, 1000-5000) drilled EN then JP.
+        const threeLines: IndexedSubtitleModel[] = [
+            { ...subtitles[0], index: 0, start: 1000, end: 2000, originalStart: 1000, originalEnd: 2000 },
+            { ...subtitles[0], index: 1, start: 2500, end: 3500, originalStart: 2500, originalEnd: 3500 },
+            { ...subtitles[1], index: 2, start: 4000, end: 5000, originalStart: 4000, originalEnd: 5000 },
+        ];
+
+        function setup() {
+            const playHandlers: Array<() => void> = [];
+            const state = { timeMs: 1000 };
+            const seeks: number[] = [];
+            const waits: number[] = [];
+            let releaseWait: ((reached: boolean) => void) | undefined;
+            const media = createAdapter({
+                currentTimeMs: () => state.timeMs,
+                seek: jest.fn(async (timestampMs: number) => {
+                    seeks.push(timestampMs);
+                    state.timeMs = timestampMs;
+                }),
+                waitUntilTime: jest.fn((targetMs: number) => {
+                    waits.push(targetMs);
+                    return new Promise<boolean>((resolve) => {
+                        releaseWait = resolve;
+                    });
+                }),
+                cancelPendingWait: jest.fn(() => releaseWait?.(false)),
+                onExternalPlay: (cb) => {
+                    playHandlers.push(cb);
+                    return () => undefined;
+                },
+            });
+            const controller = new PrimingController({
+                settings: {
+                    ...defaultPrimingSettings,
+                    passSequence: ['en', 'jp'],
+                    linesPerDrill: 3,
+                    autoAdvance: false,
+                    interPassGapMs: 0,
+                },
+                subtitles: () => threeLines,
+                media,
+            });
+            const tick = () => new Promise((resolve) => setTimeout(resolve, 150));
+            const mineAndResume = async (playheadAfterMine: number) => {
+                controller.suspendForExternalMediaControl();
+                state.timeMs = playheadAfterMine;
+                await tick();
+                for (const handler of playHandlers) handler();
+                await tick();
+            };
+            return { controller, seeks, waits, tick, mineAndResume };
+        }
+
+        it('continues from the mined line instead of rewinding to the window start', async () => {
+            const { controller, seeks, waits, tick, mineAndResume } = setup();
+            controller.start();
+            await tick();
+            expect(seeks).toEqual([1000]);
+
+            // Mine the middle line; recording leaves the playhead at its end.
+            await mineAndResume(3600);
+
+            expect(seeks).toEqual([1000]);
+            expect(waits).toEqual([5000, 5000]);
+            expect(controller.currentPassIndex).toBe(0);
+            controller.stop();
+        });
+
+        it('moves on to the next pass when mining ran past the end of the window', async () => {
+            const { controller, seeks, tick, mineAndResume } = setup();
+            controller.start();
+            await tick();
+
+            // Mine the last line; recording padding carries the playhead past the window end.
+            await mineAndResume(5200);
+
+            expect(controller.currentPassIndex).toBe(1);
+            expect(seeks).toEqual([1000, 1000]);
+            controller.stop();
+        });
+    });
+
     it('resumes the current pass after a user pause without advancing', async () => {
         const pauseHandlers: Array<() => void> = [];
         const playHandlers: Array<() => void> = [];
