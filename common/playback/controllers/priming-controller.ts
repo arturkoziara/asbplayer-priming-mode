@@ -62,6 +62,8 @@ export default class PrimingController {
     private sleepTimer?: ReturnType<typeof setTimeout>;
     private sleepResolve?: () => void;
     private pausedMidPass = false;
+    /** True while mining owns the media element; its seeks must not move the drill. */
+    private miningSuspended = false;
 
     constructor(options: PrimingControllerOptions) {
         this.settings = options.settings;
@@ -89,6 +91,7 @@ export default class PrimingController {
         this.active = true;
         this.cancelled = false;
         this.suspended = false;
+        this.miningSuspended = false;
         this.pausedMidPass = false;
         this.gapExtensionMs = 0;
         this.cuesDrilled = 0;
@@ -176,6 +179,7 @@ export default class PrimingController {
     suspendForExternalMediaControl(): void {
         if (!this.active) return;
         this.suspended = true;
+        this.miningSuspended = true;
         // Resume from wherever mining leaves the playhead instead of rewinding the drill window.
         this.pausedMidPass = true;
         this.cancelSleep();
@@ -231,7 +235,7 @@ export default class PrimingController {
     private bindInterruptionHandlers(): void {
         this.unbinders.push(
             this.media.onExternalSeek((timestampMs) => {
-                if (!this.active || this.cancelled || this.suspended) return;
+                if (!this.active || this.cancelled || this.miningSuspended) return;
                 const found = this.cueContaining(timestampMs);
                 if (found === undefined) return;
                 this.listIndex = found.listIndex;
@@ -239,6 +243,8 @@ export default class PrimingController {
                 this.passIndex = 0;
                 this.gapExtensionMs = 0;
                 this.onCueChanged?.(found.group.cues[0].index);
+                // Scrubbing usually pauses first: just move the drill and start there on play.
+                if (this.suspended) return;
                 void this.restartRun();
             }),
             this.media.onExternalPause(() => {
@@ -251,6 +257,7 @@ export default class PrimingController {
             this.media.onExternalPlay(() => {
                 if (!this.active || this.cancelled || !this.suspended) return;
                 this.suspended = false;
+                this.miningSuspended = false;
             }),
             this.media.onVisibilityHidden(() => {
                 if (!this.active) return;
@@ -381,6 +388,7 @@ export default class PrimingController {
         this.passIndex = 0;
         this.gapExtensionMs = 0;
         this.suspended = false;
+        this.miningSuspended = false;
         this.onCueChanged?.(cues[listIndex].index);
         void this.restartRun();
     }

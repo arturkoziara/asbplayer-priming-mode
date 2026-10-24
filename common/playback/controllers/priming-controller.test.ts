@@ -682,6 +682,65 @@ describe('PrimingController', () => {
         controller.stop();
     });
 
+    it('jumps the drill to where the user scrubbed while paused instead of snapping back', async () => {
+        const cues = sequentialCues(20); // line n: 1000 + n*1500 .. 2000 + n*1500
+        const handlers = {
+            seek: [] as Array<(t: number) => void>,
+            pause: [] as Array<() => void>,
+            play: [] as Array<() => void>,
+        };
+        const state = { timeMs: 1000 };
+        const seeks: number[] = [];
+        let releaseWait: ((reached: boolean) => void) | undefined;
+        const media = createAdapter({
+            currentTimeMs: () => state.timeMs,
+            seek: jest.fn(async (timestampMs: number) => {
+                seeks.push(timestampMs);
+                state.timeMs = timestampMs;
+            }),
+            waitUntilTime: jest.fn(
+                () =>
+                    new Promise<boolean>((resolve) => {
+                        releaseWait = resolve;
+                    })
+            ),
+            cancelPendingWait: jest.fn(() => releaseWait?.(false)),
+            onExternalSeek: (cb) => {
+                handlers.seek.push(cb);
+                return () => undefined;
+            },
+            onExternalPause: (cb) => {
+                handlers.pause.push(cb);
+                return () => undefined;
+            },
+            onExternalPlay: (cb) => {
+                handlers.play.push(cb);
+                return () => undefined;
+            },
+        });
+        const controller = new PrimingController({
+            settings: { ...defaultPrimingSettings, passSequence: ['en'], drillSeconds: 4, interPassGapMs: 0 },
+            subtitles: () => cues,
+            media,
+        });
+        const tick = () => new Promise((resolve) => setTimeout(resolve, 150));
+
+        controller.start();
+        await tick();
+        expect(seeks).toEqual([1000]);
+
+        // YouTube scrubbing: pause, seek to line 10 (16000-17000), then play.
+        for (const handler of handlers.pause) handler();
+        state.timeMs = 16500;
+        for (const handler of handlers.seek) handler(16500);
+        await tick();
+        for (const handler of handlers.play) handler();
+        await tick();
+
+        expect(seeks).toEqual([1000, 16000]);
+        controller.stop();
+    });
+
     describe('resuming after mining', () => {
         // One 10s window (three lines, 1000-5000) drilled EN then JP.
         const threeLines: IndexedSubtitleModel[] = [

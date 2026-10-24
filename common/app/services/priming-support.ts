@@ -29,6 +29,7 @@ export default class PrimingSupport {
     private flashElement?: HTMLDivElement;
     private audioContext?: AudioContext;
     private ignoreExternalUntil = 0;
+    private lastInternalSeekMs?: number;
     private waitGeneration = 0;
     private desired = false;
     /** True while audio/screenshot mining owns the media element. */
@@ -259,6 +260,7 @@ export default class PrimingSupport {
             currentTimeMs: () => this.context.currentTimeMs(),
             durationMs: () => (Number.isFinite(video.duration) ? video.duration * 1000 : 0),
             seek: async (timestampMs) => {
+                this.lastInternalSeekMs = timestampMs;
                 this.markInternal();
                 await this.context.seek(timestampMs);
                 await this.waitForSeeked(video, timestampMs);
@@ -289,8 +291,13 @@ export default class PrimingSupport {
             trackKinds: () => this.trackKinds(),
             onExternalSeek: (cb) => {
                 const listener = () => {
-                    if (this.ignoringExternal || this.recordingSuppressed) return;
-                    cb(this.context.currentTimeMs());
+                    if (this.recordingSuppressed) return;
+                    const nowMs = this.context.currentTimeMs();
+                    // Only swallow the echo of our own seek; a user scrub right after a pass boundary still counts.
+                    const nearOwnSeek =
+                        this.lastInternalSeekMs !== undefined && Math.abs(nowMs - this.lastInternalSeekMs) < 1500;
+                    if (this.ignoringExternal && nearOwnSeek) return;
+                    cb(nowMs);
                 };
                 video.addEventListener('seeked', listener);
                 return () => video.removeEventListener('seeked', listener);
