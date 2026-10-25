@@ -64,6 +64,9 @@ export default class PrimingController {
     private pausedMidPass = false;
     /** True while mining owns the media element; its seeks must not move the drill. */
     private miningSuspended = false;
+    /** Seek target inside the current group for the next pass iteration (arrow navigation). */
+    private pendingJump?: { readonly ms: number; readonly rewind: boolean };
+    private lastNavigation?: { readonly index: number; readonly atMs: number };
 
     constructor(options: PrimingControllerOptions) {
         this.settings = options.settings;
@@ -137,7 +140,10 @@ export default class PrimingController {
         void this.restartRun();
     }
 
-    /** Right arrow: start drilling from the subtitle line after the one playing now. */
+    /**
+     * Right arrow: go to the line after the one playing. Inside the drill window it keeps the
+     * current pass; past the window a new drill starts there from pass one.
+     */
     skipToNextCue(): void {
         if (!this.active) return;
 
@@ -147,7 +153,7 @@ export default class PrimingController {
             return;
         }
 
-        const current = this.playingLine(cues).index;
+        const current = this.recentNavigationIndex() ?? this.playingLine(cues).index;
         let target = current + 1;
         while (target < cues.length && cuesOverlap(cues[current], cues[target])) {
             target += 1;
@@ -157,24 +163,28 @@ export default class PrimingController {
             return;
         }
 
-        this.goToStart(target, cues);
+        if (this.inCurrentGroup(target, cues)) {
+            this.jumpWithinGroup(target, cues, false);
+        } else {
+            this.goToStart(target, cues);
+        }
     }
 
     /**
-     * Left arrow: go back to the last subtitle line. Inside a line that means the one before it;
-     * in the silence after a line it means that line.
+     * Left arrow: repeat the line playing (or the one just heard, in the silence after it), staying
+     * in the current pass. Pressed again right away, it goes back one more line.
      */
     skipToPreviousCue(): void {
         if (!this.active) return;
 
         const cues = this.drillCues();
-        const { index: current, inGroup } = this.playingLine(cues);
+        const recent = this.recentNavigationIndex();
+        const current = recent ?? this.playingLine(cues).index;
         const cue = cues[current];
         if (cue === undefined) return;
 
-        const inSilenceAfterLine = inGroup && this.media.currentTimeMs() > cue.end;
         let target = current;
-        if (!inSilenceAfterLine) {
+        if (recent !== undefined) {
             target = current - 1;
             while (target >= 0 && cuesOverlap(cue, cues[target])) {
                 target -= 1;
@@ -182,7 +192,11 @@ export default class PrimingController {
         }
         if (target < 0) return;
 
-        this.goToStart(target, cues);
+        if (this.inCurrentGroup(target, cues)) {
+            this.jumpWithinGroup(target, cues, true);
+        } else {
+            this.goToStart(target, cues, true);
+        }
     }
 
     extendCurrentGap(extraMs: number): void {
@@ -329,12 +343,14 @@ export default class PrimingController {
                 const finishedWhileSuspended = resumeRequested && nowMs >= endMs;
                 this.pausedMidPass = false;
                 const replayPass = this.passIndex > 0;
+                const jump = this.pendingJump;
+                this.pendingJump = undefined;
+                const jumpMs = jump !== undefined && jump.ms >= startMs && jump.ms < endMs ? jump.ms : undefined;
 
                 if (!finishedWhileSuspended) {
-                    if (!resumeMidPass && replayPass) {
-                        if (this.settings.rewindFlash ?? true) this.media.flashRewind?.(this.rewindFlashOpacity());
-                        if (this.settings.rewindSound ?? false) this.media.playRewindSound?.();
-                        await this.media.seek(startMs);
+                    if (jumpMs !== undefined || (!resumeMidPass && replayPass)) {
+                        if (jumpMs === undefined || jump?.rewind) this.rewindCue();
+                        await this.media.seek(jumpMs ?? startMs);
                     }
 
                     this.media.setVisibleTracks(this.visibleTracksForCurrentPass());
@@ -342,7 +358,7 @@ export default class PrimingController {
                     this.media.setBlackout(pass.blackout);
                     this.media.setPlaybackRate(pass.playbackRate);
 
-                    if (!resumeMidPass && !replayPass) {
+                    if (jumpMs === undefined && !resumeMidPass && !replayPass) {
                         await this.media.seek(startMs);
                     }
                     if (!this.active || this.cancelled) return;
@@ -401,15 +417,40 @@ export default class PrimingController {
         return true;
     }
 
-    private goToStart(listIndex: number, cues: readonly IndexedSubtitleModel[]): void {
+    private goToStart(listIndex: number, cues: readonly IndexedSubtitleModel[], keepPass = false): void {
         this.listIndex = listIndex;
         this.pausedMidPass = false;
-        this.passIndex = 0;
+        this.pendingJump = undefined;
+        this.lastNavigation = { index: listIndex, atMs: performance.now() };
+        if (!keepPass) this.passIndex = 0;
         this.gapExtensionMs = 0;
         this.suspended = false;
         this.miningSuspended = false;
         this.onCueChanged?.(cues[listIndex].index);
         void this.restartRun();
+    }
+
+    /** Replay from a line inside the current drill window without changing the window or pass. */
+    private jumpWithinGroup(index: number, cues: readonly IndexedSubtitleModel[], rewind: boolean): void {
+        this.pendingJump = { ms: cues[index].start, rewind };
+        this.lastNavigation = { index, atMs: performance.now() };
+        this.pausedMidPass = false;
+        this.gapExtensionMs = 0;
+        this.suspended = false;
+        this.miningSuspended = false;
+        this.onCueChanged?.(cues[index].index);
+        void this.restartRun();
+    }
+
+    private inCurrentGroup(index: number, cues: readonly IndexedSubtitleModel[]): boolean {
+        return index >= this.listIndex && index < this.listIndex + this.groupSize(this.listIndex, cues);
+    }
+
+    /** The line an arrow press just went to, while its seek may still be in flight. */
+    private recentNavigationIndex(): number | undefined {
+        const last = this.lastNavigation;
+        if (last === undefined || performance.now() - last.atMs >= repeatPressWindowMs) return undefined;
+        return last.index;
     }
 
     /** One timeline of cues: overlapping EN+JP at the same time count as one line. */
@@ -422,6 +463,11 @@ export default class PrimingController {
 
     private linesPerDrill(): number {
         return Math.max(1, Math.floor(this.settings.linesPerDrill ?? 1));
+    }
+
+    private rewindCue(): void {
+        if (this.settings.rewindFlash ?? true) this.media.flashRewind?.(this.rewindFlashOpacity());
+        if (this.settings.rewindSound ?? false) this.media.playRewindSound?.();
     }
 
     private rewindFlashOpacity(): number {
@@ -537,6 +583,9 @@ export default class PrimingController {
         return bestIndex;
     }
 }
+
+/** A second arrow press within this long continues from the line the first press went to. */
+const repeatPressWindowMs = 1000;
 
 function cuesOverlap(left: IndexedSubtitleModel, right: IndexedSubtitleModel): boolean {
     return left.start < right.end && right.start < left.end;

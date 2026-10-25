@@ -60,6 +60,68 @@ export function adjacentSubtitle(
     return null;
 }
 
+/**
+ * Picks where previous/next-subtitle navigation should seek. Next is the following line. Previous
+ * repeats the line playing (or the one just heard, in the silence after it); a second press right
+ * away goes back one more line. Stateful only to recognise that quick second press.
+ */
+export class SubtitleSeekNavigator {
+    private lastBackward?: { readonly subtitle: SubtitleModel; readonly atMs: number };
+
+    constructor(private readonly repeatPressWindowMs = 1000) {}
+
+    target(
+        forward: boolean,
+        time: number,
+        subtitles: SubtitleModel[],
+        seekableTracks: SeekableTracks
+    ): SubtitleModel | null {
+        if (forward) {
+            this.lastBackward = undefined;
+            return adjacentSubtitle(true, time, subtitles, seekableTracks);
+        }
+
+        const now = performance.now();
+        const last = this.lastBackward;
+        const subtitle =
+            last !== undefined && now - last.atMs < this.repeatPressWindowMs
+                ? adjacentSubtitle(false, last.subtitle.start, subtitles, seekableTracks)
+                : (currentSubtitle(time, subtitles, seekableTracks) ??
+                  adjacentSubtitle(false, time, subtitles, seekableTracks));
+        this.lastBackward = subtitle === null ? undefined : { subtitle, atMs: now };
+        return subtitle;
+    }
+}
+
+/**
+ * Stateless variant for UI buttons: repeat the line playing, unless it only just started (then go
+ * back one line), so pressing again right after the seek keeps going back.
+ */
+export function previousSeekSubtitle(time: number, subtitles: SubtitleModel[], seekableTracks: SeekableTracks) {
+    const current = currentSubtitle(time, subtitles, seekableTracks);
+    if (current === null) {
+        return adjacentSubtitle(false, time, subtitles, seekableTracks);
+    }
+    const graceMs = Math.min(1000, (current.end - current.start) / 2);
+    if (time - current.start >= graceMs) {
+        return current;
+    }
+    return adjacentSubtitle(false, current.start, subtitles, seekableTracks);
+}
+
+function currentSubtitle(time: number, subtitles: SubtitleModel[], seekableTracks: SeekableTracks) {
+    let current: SubtitleModel | null = null;
+    for (const s of subtitles) {
+        if (!isTrackSeekable(seekableTracks, s.track) || time < s.start || time > s.end) {
+            continue;
+        }
+        if (current === null || s.start > current.start) {
+            current = s;
+        }
+    }
+    return current;
+}
+
 export interface KeyBinder {
     bindCopy<T extends SubtitleModel = SubtitleModel>(
         onCopy: (event: KeyboardEvent, subtitle: T) => void,
@@ -436,6 +498,7 @@ export class DefaultKeyBinder implements KeyBinder {
         capture = false,
         onOverride?: (event: KeyboardEvent, forward: boolean) => boolean
     ) {
+        const navigator = new SubtitleSeekNavigator();
         const delegate = (event: KeyboardEvent, forward: boolean) => {
             if (disabledGetter()) {
                 return false;
@@ -451,7 +514,7 @@ export class DefaultKeyBinder implements KeyBinder {
                 return false;
             }
 
-            const subtitle = adjacentSubtitle(forward, timeGetter(), subtitles, seekableTracksGetter());
+            const subtitle = navigator.target(forward, timeGetter(), subtitles, seekableTracksGetter());
 
             if (subtitle !== null && subtitle.start >= 0 && subtitle.end >= 0) {
                 onSeekToSubtitle(event, subtitle);

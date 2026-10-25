@@ -231,11 +231,12 @@ const MobileVideoOverlay = React.forwardRef<HTMLDivElement, Props>(function Mobi
     }, [onPlaybackRate, model]);
 
     const handleSeekToPreviousSubtitle = useCallback(() => {
-        if (!model || model.previousSubtitleTimestamp === undefined) {
+        const timestamp = model?.previousSeekTimestamp ?? model?.previousSubtitleTimestamp;
+        if (timestamp === undefined) {
             return;
         }
 
-        onSeek(model.previousSubtitleTimestamp);
+        onSeek(timestamp);
     }, [onSeek, model]);
 
     const handleSeekBackwards = useCallback(() => {

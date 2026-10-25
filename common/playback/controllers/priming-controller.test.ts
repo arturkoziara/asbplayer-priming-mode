@@ -567,7 +567,7 @@ describe('PrimingController', () => {
             controller.stop();
         });
 
-        it('left goes back to the previous line from inside a line', async () => {
+        it('left repeats the line playing; pressed again right away it goes back one line', async () => {
             const { controller, state, cueChanges, tick } = setup({ linesPerDrill: 4 }); // lines 0-3
             controller.start();
             await tick();
@@ -575,10 +575,30 @@ describe('PrimingController', () => {
             state.timeMs = 6000; // inside line 3
             controller.skipToPreviousCue();
             await tick();
-            controller.skipToPreviousCue(); // playhead now at the start of line 2
+            controller.skipToPreviousCue();
             await tick();
 
-            expect(cueChanges).toEqual([0, 2, 1]);
+            expect(cueChanges).toEqual([0, 3, 2]);
+            controller.stop();
+        });
+
+        it('left repeats the current line in the same pass (JP stays JP)', async () => {
+            const { controller, state, cueChanges, tick } = setup({
+                passSequence: ['en', 'jp'],
+                drillSeconds: 4, // window = lines 0-2 (1000-5000)
+            });
+            controller.start();
+            await tick();
+            controller.skipCurrentPass(); // now on the JP pass
+            await tick();
+
+            state.timeMs = 4600; // inside line 2 (4000-5000)
+            controller.skipToPreviousCue();
+            await tick();
+
+            expect(cueChanges.at(-1)).toBe(2);
+            expect(controller.currentPassIndex).toBe(1);
+            expect(state.timeMs).toBe(4000);
             controller.stop();
         });
 
@@ -596,14 +616,22 @@ describe('PrimingController', () => {
         });
     });
 
-    it('plays a sliding four-line window after stepping one line', async () => {
+    it('right inside the drill window jumps to the next line without moving the window', async () => {
         const sixLines = sequentialCues(6);
         const media = createAdapter();
+        const seeks: number[] = [];
         const endTimes: number[] = [];
-        media.waitUntilTime = jest.fn(async (targetMs: number) => {
-            endTimes.push(targetMs);
-            return true;
+        media.seek = jest.fn(async (timestampMs: number) => {
+            seeks.push(timestampMs);
         });
+        let releaseWait: ((reached: boolean) => void) | undefined;
+        media.waitUntilTime = jest.fn((targetMs: number) => {
+            endTimes.push(targetMs);
+            return new Promise<boolean>((resolve) => {
+                releaseWait = resolve;
+            });
+        });
+        media.cancelPendingWait = jest.fn(() => releaseWait?.(false));
 
         const controller = new PrimingController({
             settings: {
@@ -622,7 +650,8 @@ describe('PrimingController', () => {
         controller.skipToNextCue();
         await new Promise((resolve) => setTimeout(resolve, 20));
 
-        expect(endTimes.at(-1)).toBe(sixLines[4].end);
+        expect(seeks).toEqual([sixLines[0].start, sixLines[1].start]);
+        expect(endTimes.at(-1)).toBe(sixLines[3].end);
         controller.stop();
     });
 

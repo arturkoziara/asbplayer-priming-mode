@@ -77,7 +77,7 @@ import {
     StopRecordingErrorCode,
     VideoDataUiOpenReason,
 } from '@project/common';
-import { adjacentSubtitle } from '@project/common/key-binder';
+import { adjacentSubtitle, SubtitleSeekNavigator } from '@project/common/key-binder';
 import type { SeekableTracks } from '@project/common/settings';
 import {
     calculateSeekableTracksValue,
@@ -769,6 +769,7 @@ export default class Binding {
         this.mobileGestureController.bind();
         this.bulkExportController.bind();
 
+        const navigator = new SubtitleSeekNavigator();
         const seek = (forward: boolean) => {
             if (this.primingActive) {
                 if (forward) {
@@ -779,7 +780,7 @@ export default class Binding {
                 return;
             }
 
-            const subtitle = adjacentSubtitle(
+            const subtitle = navigator.target(
                 forward,
                 this.currentTimeMs,
                 this.subtitleController.subtitles,

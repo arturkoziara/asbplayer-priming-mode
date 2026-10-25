@@ -326,6 +326,8 @@ export interface MobileOverlayModel {
     recordingEnabled: boolean;
     recording: boolean;
     previousSubtitleTimestamp?: number;
+    /** Where the previous-subtitle button seeks: the current line's start, or the line before. */
+    previousSeekTimestamp?: number;
     nextSubtitleTimestamp?: number;
     currentTimestamp: number;
     language?: string;

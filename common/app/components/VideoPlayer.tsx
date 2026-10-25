@@ -77,7 +77,7 @@ import '@project/common/app/components/subtitles.css';
 import i18n from 'i18next';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { adjacentSubtitle } from '@project/common/key-binder';
+import { adjacentSubtitle, previousSeekSubtitle, SubtitleSeekNavigator } from '@project/common/key-binder';
 import PrimingSupport from '@project/common/app/services/priming-support';
 import type { PrimingPassKind } from '@project/common/settings/settings';
 import { usePlaybackPreferences } from '@project/common/app/hooks/use-playback-preferences';
@@ -2111,6 +2111,7 @@ export default function VideoPlayer({
     domCacheRef.current = getSubtitleDomCache();
     updateSubtitleDomCacheRef.current = updateSubtitleDomCache;
 
+    const swipeNavigatorRef = useRef(new SubtitleSeekNavigator());
     const handleSwipe = useCallback(
         (direction: Direction) => {
             if (primingActive()) {
@@ -2123,7 +2124,7 @@ export default function VideoPlayer({
                 return;
             }
 
-            const subtitle = adjacentSubtitle(
+            const subtitle = swipeNavigatorRef.current.target(
                 direction === 'right',
                 clock.time({ maxMs: lengthMs }),
                 subtitles,
@@ -2282,6 +2283,8 @@ export default function VideoPlayer({
             recording: mineIntervalStartTimestamp !== undefined,
             previousSubtitleTimestamp:
                 adjacentSubtitle(false, timestamp, subtitles, miscSettings.seekableTracks)?.originalStart ?? undefined,
+            previousSeekTimestamp:
+                previousSeekSubtitle(timestamp, subtitles, miscSettings.seekableTracks)?.originalStart ?? undefined,
             nextSubtitleTimestamp:
                 adjacentSubtitle(true, timestamp, subtitles, miscSettings.seekableTracks)?.originalStart ?? undefined,
             currentTimestamp: timestamp,

@@ -11,7 +11,7 @@ import type {
 } from '@project/common';
 import type Binding from '@project/extension/src/services/binding';
 import { CachingElementOverlay, OffsetAnchor } from '@project/extension/src/services/element-overlay';
-import { adjacentSubtitle } from '@project/common/key-binder';
+import { adjacentSubtitle, previousSeekSubtitle } from '@project/common/key-binder';
 import { detectSubtitleTrackVisibilityMode, loadedSubtitleTrackIndexes } from '@project/common/util';
 import { frameColorScheme, frameColorSchemeClass } from '@project/extension/src/services/frame-color-scheme';
 import { v4 as uuidv4 } from 'uuid';
@@ -247,6 +247,8 @@ export class MobileVideoOverlayController {
             recording: this._context.recordingMedia,
             previousSubtitleTimestamp:
                 adjacentSubtitle(false, timestamp, subtitles, seekableTracks)?.originalStart ?? undefined,
+            previousSeekTimestamp:
+                previousSeekSubtitle(timestamp, subtitles, seekableTracks)?.originalStart ?? undefined,
             nextSubtitleTimestamp:
                 adjacentSubtitle(true, timestamp, subtitles, seekableTracks)?.originalStart ?? undefined,
             currentTimestamp: timestamp,
